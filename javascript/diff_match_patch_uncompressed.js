@@ -67,8 +67,111 @@ var DIFF_DELETE = -1;
 var DIFF_INSERT = 1;
 var DIFF_EQUAL = 0;
 
-/** @typedef {!Array.<number|string>} */
+/** @typedef {!Array.<number|string|Array>} */
 diff_match_patch.Diff;
+
+
+/**
+ * Monkey-patch an array to make it quack like a string
+ * @see http://perfectionkills.com/how-ecmascript-5-still-does-not-allow-to-subclass-an-array/
+ * @param {Array} array
+ * @return {diff_match_patch.FakeString}
+ */
+diff_match_patch.FakeString = function FakeString(array) {
+  var seq = [];
+  if (array) {
+    seq.push.apply(seq, array);
+  }
+  seq.__proto__ = diff_match_patch.FakeString.prototype;
+  return seq;
+};
+
+diff_match_patch.FakeString.prototype = new Array;
+
+diff_match_patch.FakeString.prototype._indexOf = Array.prototype.indexOf;
+
+/**
+ * @see http://stackoverflow.com/questions/4980134
+ * @param {Array} array
+ * @return {number}
+ */
+diff_match_patch.FakeString.prototype.indexOf = function(array) {
+  var m = array.length;
+  var found;
+  var index;
+  var prevIndex = 0;
+  while ((index = this._indexOf(array[0], prevIndex)) != -1) {
+    found = true;
+    for (var i = 1; i < m; i++) {
+      if (this[index + i] != array[i]) {
+        found = false;
+      }
+    }
+    if (found) {
+      return index;
+    }
+    prevIndex = index + 1
+  }
+  return index;
+};
+
+/**
+ * @param {number} index
+ */
+diff_match_patch.FakeString.prototype.charAt = function(index) {
+  return this[index];
+};
+
+/**
+ * @param {number} start
+ * @param {number} end
+ */
+diff_match_patch.FakeString.prototype.substring = function(start, end) {
+  start = start || 0;
+  if (end === undefined) {
+    var array = this.slice(start);
+  } else {
+    array = this.slice(start, end);
+  }
+  return diff_match_patch.FakeString(array);
+};
+
+diff_match_patch.FakeString.prototype._join = Array.prototype.join;
+
+/**
+ * @param {string} separator
+ * @return {diff_match_patch.FakeString}
+ */
+diff_match_patch.FakeString.prototype.join = function(separator) {
+  var result = diff_match_patch.FakeString();
+  for (var i=0; i<this.length; i++) {
+    result.push(this[i][0]);
+  }
+  return result;
+};
+
+/**
+ * @param a
+ * @param b
+ * @return {boolean}
+ */
+diff_match_patch.prototype.equal = function(a, b) {
+  if (a == b) {
+    return true;
+  } else if (typeof a == 'object') {
+    // Array equals
+    var i = a.length;
+    if (i != b.length) {
+      return false;
+    }
+    while (i--) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
 
 
 /**
@@ -102,11 +205,16 @@ diff_match_patch.prototype.diff_main = function(text1, text2, opt_checklines,
   }
 
   // Check for equality (speedup).
-  if (text1 == text2) {
+  if (this.equal(text1, text2)) {
     if (text1) {
       return [[DIFF_EQUAL, text1]];
     }
     return [];
+  }
+
+  if (text1.push && !text1.charAt) {
+    text1 = diff_match_patch.FakeString(text1);
+    text2 = diff_match_patch.FakeString(text2);
   }
 
   if (typeof opt_checklines == 'undefined') {
@@ -130,10 +238,10 @@ diff_match_patch.prototype.diff_main = function(text1, text2, opt_checklines,
   var diffs = this.diff_compute_(text1, text2, checklines, deadline);
 
   // Restore the prefix and suffix.
-  if (commonprefix) {
+  if (commonprefix.length) {
     diffs.unshift([DIFF_EQUAL, commonprefix]);
   }
-  if (commonsuffix) {
+  if (commonsuffix.length) {
     diffs.push([DIFF_EQUAL, commonsuffix]);
   }
   this.diff_cleanupMerge(diffs);
@@ -157,12 +265,12 @@ diff_match_patch.prototype.diff_compute_ = function(text1, text2, checklines,
     deadline) {
   var diffs;
 
-  if (!text1) {
+  if (!text1.length) {
     // Just add some text (speedup).
     return [[DIFF_INSERT, text2]];
   }
 
-  if (!text2) {
+  if (!text2.length) {
     // Just delete some text (speedup).
     return [[DIFF_DELETE, text1]];
   }
@@ -243,17 +351,17 @@ diff_match_patch.prototype.diff_lineMode_ = function(text1, text2, deadline) {
   var pointer = 0;
   var count_delete = 0;
   var count_insert = 0;
-  var text_delete = '';
-  var text_insert = '';
+  var text_delete = diff_match_patch.FakeString();
+  var text_insert = diff_match_patch.FakeString();
   while (pointer < diffs.length) {
     switch (diffs[pointer][0]) {
       case DIFF_INSERT:
         count_insert++;
-        text_insert += diffs[pointer][1];
+        text_insert.push(diffs[pointer][1]);
         break;
       case DIFF_DELETE:
         count_delete++;
-        text_delete += diffs[pointer][1];
+        text_delete.push(diffs[pointer][1]);
         break;
       case DIFF_EQUAL:
         // Upon reaching an equality, check for prior redundancies.
@@ -266,12 +374,12 @@ diff_match_patch.prototype.diff_lineMode_ = function(text1, text2, deadline) {
           for (var j = a.length - 1; j >= 0; j--) {
             diffs.splice(pointer, 0, a[j]);
           }
-          pointer = pointer + a.length;
+          pointer += a.length;
         }
         count_insert = 0;
         count_delete = 0;
-        text_delete = '';
-        text_insert = '';
+        text_delete = diff_match_patch.FakeString();
+        text_insert = diff_match_patch.FakeString();
         break;
     }
     pointer++;
@@ -519,7 +627,7 @@ diff_match_patch.prototype.diff_charsToLines_ = function(diffs, lineArray) {
  */
 diff_match_patch.prototype.diff_commonPrefix = function(text1, text2) {
   // Quick check for common null cases.
-  if (!text1 || !text2 || text1.charAt(0) != text2.charAt(0)) {
+  if (!text1 || !text2 || !this.equal(text1.charAt(0), text2.charAt(0))) {
     return 0;
   }
   // Binary search.
@@ -529,8 +637,8 @@ diff_match_patch.prototype.diff_commonPrefix = function(text1, text2) {
   var pointermid = pointermax;
   var pointerstart = 0;
   while (pointermin < pointermid) {
-    if (text1.substring(pointerstart, pointermid) ==
-        text2.substring(pointerstart, pointermid)) {
+    if (this.equal(text1.substring(pointerstart, pointermid),
+        text2.substring(pointerstart, pointermid))) {
       pointermin = pointermid;
       pointerstart = pointermin;
     } else {
@@ -550,8 +658,7 @@ diff_match_patch.prototype.diff_commonPrefix = function(text1, text2) {
  */
 diff_match_patch.prototype.diff_commonSuffix = function(text1, text2) {
   // Quick check for common null cases.
-  if (!text1 || !text2 ||
-      text1.charAt(text1.length - 1) != text2.charAt(text2.length - 1)) {
+  if (!text1 || !text2 || !this.equal(text1.charAt(text1.length - 1), text2.charAt(text2.length - 1))) {
     return 0;
   }
   // Binary search.
@@ -561,8 +668,8 @@ diff_match_patch.prototype.diff_commonSuffix = function(text1, text2) {
   var pointermid = pointermax;
   var pointerend = 0;
   while (pointermin < pointermid) {
-    if (text1.substring(text1.length - pointermid, text1.length - pointerend) ==
-        text2.substring(text2.length - pointermid, text2.length - pointerend)) {
+    if (this.equal(text1.substring(text1.length - pointermid, text1.length - pointerend),
+        text2.substring(text2.length - pointermid, text2.length - pointerend))) {
       pointermin = pointermid;
       pointerend = pointermin;
     } else {
@@ -1019,19 +1126,19 @@ diff_match_patch.prototype.diff_cleanupMerge = function(diffs) {
   var pointer = 0;
   var count_delete = 0;
   var count_insert = 0;
-  var text_delete = '';
-  var text_insert = '';
+  var text_delete = diff_match_patch.FakeString();
+  var text_insert = diff_match_patch.FakeString();
   var commonlength;
   while (pointer < diffs.length) {
     switch (diffs[pointer][0]) {
       case DIFF_INSERT:
         count_insert++;
-        text_insert += diffs[pointer][1];
+        text_insert.push.apply(text_insert, diffs[pointer][1]);
         pointer++;
         break;
       case DIFF_DELETE:
         count_delete++;
-        text_delete += diffs[pointer][1];
+        text_delete.push.apply(text_delete, diffs[pointer][1]);
         pointer++;
         break;
       case DIFF_EQUAL:
@@ -1044,8 +1151,8 @@ diff_match_patch.prototype.diff_cleanupMerge = function(diffs) {
               if ((pointer - count_delete - count_insert) > 0 &&
                   diffs[pointer - count_delete - count_insert - 1][0] ==
                   DIFF_EQUAL) {
-                diffs[pointer - count_delete - count_insert - 1][1] +=
-                    text_insert.substring(0, commonlength);
+                diffs[pointer - count_delete - count_insert - 1][1].push(
+                  text_insert.substring(0, commonlength));
               } else {
                 diffs.splice(0, 0, [DIFF_EQUAL,
                                     text_insert.substring(0, commonlength)]);
@@ -1081,15 +1188,17 @@ diff_match_patch.prototype.diff_cleanupMerge = function(diffs) {
                     (count_delete ? 1 : 0) + (count_insert ? 1 : 0) + 1;
         } else if (pointer !== 0 && diffs[pointer - 1][0] == DIFF_EQUAL) {
           // Merge this equality with the previous one.
-          diffs[pointer - 1][1] += diffs[pointer][1];
+          if (diffs[pointer][1]) {
+            diffs[pointer - 1][1].push(diffs[pointer][1]);
+          }
           diffs.splice(pointer, 1);
         } else {
           pointer++;
         }
         count_insert = 0;
         count_delete = 0;
-        text_delete = '';
-        text_insert = '';
+        text_delete = diff_match_patch.FakeString();
+        text_insert = diff_match_patch.FakeString();
         break;
     }
   }

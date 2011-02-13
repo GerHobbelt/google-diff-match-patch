@@ -45,15 +45,15 @@
           // msg is optional.
           actual = expected;
           expected = msg;
-          msg = 'Expected: \'' + expected + '\' Actual: \'' + actual + '\'';
+          msg = 'Expected: \'' + JSON.stringify(expected) + '\' Actual: \'' + JSON.stringify(actual) + '\'';
         }
         if (expected === actual) {
-          document.write('<FONT COLOR="#009900">Ok</FONT><BR>');
+          document.write('<FONT COLOR="#009900">Ok</FONT> ');
           test_good++;
         } else {
-          document.write('<FONT COLOR="#990000"><BIG>Fail!</BIG></FONT><BR>');
+          document.write('<FONT COLOR="#990000"><BIG>Fail!</BIG></FONT>');
           msg = msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          document.write('<code>' + msg + '</code><BR>');
+          document.write('<pre>' + msg + '</pre>');
           test_bad++;
         }
       }
@@ -81,11 +81,12 @@
       function runTests() {
         for (var x = 0; x < tests.length; x++) {
           document.write('<H3>' + tests[x] + ':</H3>');
-          eval(tests[x] + '()');
+          window[tests[x]]();
         }
       }
 
       var tests = [
+          'testDiffMain_Array',
           'testDiffCommonPrefix',
           'testDiffCommonSuffix',
           'testDiffCommonOverlap',
