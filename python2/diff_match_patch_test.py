@@ -36,7 +36,7 @@ class DiffMatchPatchTest(unittest.TestCase):
     # Construct the two texts which made up the diff originally.
     text1 = ""
     text2 = ""
-    for x in xrange(0, len(diffs)):
+    for x in range(0, len(diffs)):
       if diffs[x][0] != dmp_module.diff_match_patch.DIFF_INSERT:
         text1 += diffs[x][1]
       if diffs[x][0] != dmp_module.diff_match_patch.DIFF_DELETE:
@@ -81,6 +81,11 @@ class DiffTest(DiffMatchPatchTest):
 
     # Overlap.
     self.assertEquals(3, self.dmp.diff_commonOverlap("123456xxx", "xxxabcd"))
+
+    # Unicode.
+    # Some overly clever languages (C#) may treat ligatures as equal to their
+    # component letters.  E.g. U+FB01 == 'fi'
+    self.assertEquals(0, self.dmp.diff_commonOverlap("fi", u"\ufb01i"))
 
   def testDiffHalfMatch(self):
     # Detect a halfmatch.
@@ -257,6 +262,11 @@ class DiffTest(DiffMatchPatchTest):
     self.dmp.diff_cleanupSemanticLossless(diffs)
     self.assertEquals([(self.dmp.DIFF_EQUAL, "xaa"), (self.dmp.DIFF_DELETE, "a")], diffs)
 
+    # Sentence boundaries.
+    diffs = [(self.dmp.DIFF_EQUAL, "The xxx. The "), (self.dmp.DIFF_INSERT, "zzz. The "), (self.dmp.DIFF_EQUAL, "yyy.")]
+    self.dmp.diff_cleanupSemanticLossless(diffs)
+    self.assertEquals([(self.dmp.DIFF_EQUAL, "The xxx."), (self.dmp.DIFF_INSERT, " The zzz."), (self.dmp.DIFF_EQUAL, " The yyy.")], diffs)
+
   def testDiffCleanupSemantic(self):
     # Cleanup semantically trivial equalities.
     # Null case.
@@ -294,15 +304,25 @@ class DiffTest(DiffMatchPatchTest):
     self.dmp.diff_cleanupSemantic(diffs)
     self.assertEquals([(self.dmp.DIFF_EQUAL, "The "), (self.dmp.DIFF_DELETE, "cow and the "), (self.dmp.DIFF_EQUAL, "cat.")], diffs)
 
-    # Overlap elimination #1.
+    # No overlap elimination.
     diffs = [(self.dmp.DIFF_DELETE, "abcxx"), (self.dmp.DIFF_INSERT, "xxdef")]
     self.dmp.diff_cleanupSemantic(diffs)
-    self.assertEquals([(self.dmp.DIFF_DELETE, "abc"), (self.dmp.DIFF_EQUAL, "xx"), (self.dmp.DIFF_INSERT, "def")], diffs)
+    self.assertEquals([(self.dmp.DIFF_DELETE, "abcxx"), (self.dmp.DIFF_INSERT, "xxdef")], diffs)
 
-    # Overlap elimination #2.
-    diffs = [(self.dmp.DIFF_DELETE, "abcxx"), (self.dmp.DIFF_INSERT, "xxdef"), (self.dmp.DIFF_DELETE, "ABCXX"), (self.dmp.DIFF_INSERT, "XXDEF")]
+    # Overlap elimination.
+    diffs = [(self.dmp.DIFF_DELETE, "abcxxx"), (self.dmp.DIFF_INSERT, "xxxdef")]
     self.dmp.diff_cleanupSemantic(diffs)
-    self.assertEquals([(self.dmp.DIFF_DELETE, "abc"), (self.dmp.DIFF_EQUAL, "xx"), (self.dmp.DIFF_INSERT, "def"), (self.dmp.DIFF_DELETE, "ABC"), (self.dmp.DIFF_EQUAL, "XX"), (self.dmp.DIFF_INSERT, "DEF")], diffs)
+    self.assertEquals([(self.dmp.DIFF_DELETE, "abc"), (self.dmp.DIFF_EQUAL, "xxx"), (self.dmp.DIFF_INSERT, "def")], diffs)
+
+    # Reverse overlap elimination.
+    diffs = [(self.dmp.DIFF_DELETE, "xxxabc"), (self.dmp.DIFF_INSERT, "defxxx")]
+    self.dmp.diff_cleanupSemantic(diffs)
+    self.assertEquals([(self.dmp.DIFF_INSERT, "def"), (self.dmp.DIFF_EQUAL, "xxx"), (self.dmp.DIFF_DELETE, "abc")], diffs)
+
+    # Two overlap eliminations.
+    diffs = [(self.dmp.DIFF_DELETE, "abcd1212"), (self.dmp.DIFF_INSERT, "1212efghi"), (self.dmp.DIFF_EQUAL, "----"), (self.dmp.DIFF_DELETE, "A3"), (self.dmp.DIFF_INSERT, "3BC")]
+    self.dmp.diff_cleanupSemantic(diffs)
+    self.assertEquals([(self.dmp.DIFF_DELETE, "abcd"), (self.dmp.DIFF_EQUAL, "1212"), (self.dmp.DIFF_INSERT, "efghi"), (self.dmp.DIFF_EQUAL, "----"), (self.dmp.DIFF_DELETE, "A"), (self.dmp.DIFF_EQUAL, "3"), (self.dmp.DIFF_INSERT, "BC")], diffs)
 
   def testDiffCleanupEfficiency(self):
     # Cleanup operationally trivial equalities.
@@ -464,7 +484,7 @@ class DiffTest(DiffMatchPatchTest):
 
     self.assertEquals([(self.dmp.DIFF_DELETE, "Apple"), (self.dmp.DIFF_INSERT, "Banana"), (self.dmp.DIFF_EQUAL, "s are a"), (self.dmp.DIFF_INSERT, "lso"), (self.dmp.DIFF_EQUAL, " fruit.")], self.dmp.diff_main("Apples are a fruit.", "Bananas are also fruit.", False))
 
-    self.assertEquals([(self.dmp.DIFF_DELETE, "a"), (self.dmp.DIFF_INSERT, u"\u0680"), (self.dmp.DIFF_EQUAL, "x"), (self.dmp.DIFF_DELETE, "\t"), (self.dmp.DIFF_INSERT, u"\x00")], self.dmp.diff_main("ax\t", u"\u0680x\x00", False))
+    self.assertEquals([(self.dmp.DIFF_DELETE, "a"), (self.dmp.DIFF_INSERT, u"\u0680"), (self.dmp.DIFF_EQUAL, "x"), (self.dmp.DIFF_DELETE, "\t"), (self.dmp.DIFF_INSERT, "\x00")], self.dmp.diff_main("ax\t", u"\u0680x\x00", False))
 
     # Overlaps.
     self.assertEquals([(self.dmp.DIFF_DELETE, "1"), (self.dmp.DIFF_EQUAL, "a"), (self.dmp.DIFF_DELETE, "y"), (self.dmp.DIFF_EQUAL, "b"), (self.dmp.DIFF_DELETE, "2"), (self.dmp.DIFF_INSERT, "xab")], self.dmp.diff_main("1ayb2", "abxab", False))
@@ -481,7 +501,7 @@ class DiffTest(DiffMatchPatchTest):
     a = "`Twas brillig, and the slithy toves\nDid gyre and gimble in the wabe:\nAll mimsy were the borogoves,\nAnd the mome raths outgrabe.\n"
     b = "I am the very model of a modern major general,\nI've information vegetable, animal, and mineral,\nI know the kings of England, and I quote the fights historical,\nFrom Marathon to Waterloo, in order categorical.\n"
     # Increase the text lengths by 1024 times to ensure a timeout.
-    for x in xrange(10):
+    for x in range(10):
       a = a + a
       b = b + b
     startTime = time.time()

@@ -26,7 +26,7 @@ local DIFF_INSERT = dmp.DIFF_INSERT
 local DIFF_DELETE = dmp.DIFF_DELETE
 local DIFF_EQUAL = dmp.DIFF_EQUAL
 
--- Utility functions
+-- Utility functions.
 
 local function pretty(v)
   if (type(v) == 'string') then
@@ -168,6 +168,13 @@ function testDiffCommonOverlap()
   assertEquals(0, dmp.diff_commonOverlap('123456', 'abcd'));
   -- Overlap.
   assertEquals(3, dmp.diff_commonOverlap('123456xxx', 'xxxabcd'));
+  --[[
+  -- Unicode.
+  -- Some overly clever languages (C#) may treat ligatures as equal to their
+  -- component letters.  E.g. U+FB01 == 'fi'
+  -- LUANOTE: No ability to handle Unicode.
+  assertEquals(0, dmp.diff_commonOverlap('fi', '\ufb01i'));
+  --]]
 end
 
 function testDiffHalfMatch()
@@ -201,51 +208,6 @@ function testDiffHalfMatch()
   -- Optimal no halfmatch.
   dmp.settings{Diff_Timeout = 0}
   assertEquivalent({nill}, {dmp.diff_halfMatch('qHilloHelloHew', 'xHelloHeHulloy')})
-end
-
-function testDiffToLines()
-  -- Convert lines down to index arrays.
-  assertEquivalent({{1, 2, 1}, {2, 1, 2}, {'alpha\n', 'beta\n'}},
-      {dmp.diff_toLines('alpha\nbeta\nalpha\n', 'beta\nalpha\nbeta\n')})
-  assertEquivalent({{}, {1, 2, 3, 3}, {'alpha\r\n', 'beta\r\n', '\r\n'}},
-      {dmp.diff_toLines('', 'alpha\r\nbeta\r\n\r\n\r\n')})
-  assertEquivalent({{1}, {2}, {'a', 'b'}}, {dmp.diff_toLines('a', 'b')})
-
-  -- More than 256 to reveal any 8-bit limitations.
-  local n = 300
-  local lineList = {}
-  local lineIndexList = {}
-  for x = 1, n do
-    lineList[x] = x .. '\n'
-    lineIndexList[x] = x
-  end
-  assertEquals(n, #lineList)
-  local lines = table.concat(lineList)
-  assertEquivalent({lineIndexList, {}, lineList}, {dmp.diff_toLines(lines, '')})
-end
-
-function testDiffFromLines()
-  -- Convert chars up to lines.
-  local diffs
-
-  diffs = {{DIFF_EQUAL, {1, 2, 1}}, {DIFF_INSERT, {2, 1, 2}}}
-  dmp.diff_fromLines(diffs, {'alpha\n', 'beta\n'})
-  assertEquivalent(
-      {{DIFF_EQUAL, 'alpha\nbeta\nalpha\n'}, {DIFF_INSERT, 'beta\nalpha\nbeta\n'}},
-      diffs)
-
-  -- More than 256 to reveal any 8-bit limitations.
-  local n = 300
-  local lineList = {}
-  local lineIndexList = {}
-  for x = 1, n do
-    lineList[x] = x .. '\n'
-    lineIndexList[x] = x
-  end
-  local lines = table.concat(lineList)
-  diffs = {{DIFF_DELETE, lineIndexList}}
-  dmp.diff_fromLines(diffs, lineList)
-  assertEquivalent({{DIFF_DELETE, lines}}, diffs)
 end
 
 function testDiffCleanupMerge()
@@ -348,6 +310,12 @@ function testDiffCleanupSemanticLossless()
   diffs = {{DIFF_EQUAL, 'xa'}, {DIFF_DELETE, 'a'}, {DIFF_EQUAL, 'a'}}
   dmp.diff_cleanupSemanticLossless(diffs)
   assertEquivalent({{DIFF_EQUAL, 'xaa'}, {DIFF_DELETE, 'a'}}, diffs)
+  -- Sentence boundaries.
+  diffs = {{DIFF_EQUAL, 'The xxx. The '}, {DIFF_INSERT, 'zzz. The '},
+      {DIFF_EQUAL, 'yyy.'}}
+  dmp.diff_cleanupSemanticLossless(diffs)
+  assertEquivalent({{DIFF_EQUAL, 'The xxx.'}, {DIFF_INSERT, ' The zzz.'},
+      {DIFF_EQUAL, ' The yyy.'}}, diffs)
 end
 
 function testDiffCleanupSemantic()
@@ -390,14 +358,22 @@ function testDiffCleanupSemantic()
   dmp.diff_cleanupSemantic(diffs)
   assertEquivalent({{DIFF_EQUAL, 'The '}, {DIFF_DELETE, 'cow and the '},
       {DIFF_EQUAL, 'cat.'}}, diffs)
-  -- Overlap elimination #1.
+  -- No overlap elimination.
   diffs = {{DIFF_DELETE, 'abcxx'}, {DIFF_INSERT, 'xxdef'}}
   dmp.diff_cleanupSemantic(diffs)
-  assertEquivalent({{DIFF_DELETE, 'abc'}, {DIFF_EQUAL, 'xx'}, {DIFF_INSERT, 'def'}}, diffs)
-  -- Overlap elimination #2.
-  diffs = {{DIFF_DELETE, 'abcxx'}, {DIFF_INSERT, 'xxdef'}, {DIFF_DELETE, 'ABCXX'}, {DIFF_INSERT, 'XXDEF'}}
+  assertEquivalent({{DIFF_DELETE, 'abcxx'}, {DIFF_INSERT, 'xxdef'}}, diffs)
+  -- Overlap elimination.
+  diffs = {{DIFF_DELETE, 'abcxxx'}, {DIFF_INSERT, 'xxxdef'}}
   dmp.diff_cleanupSemantic(diffs)
-  assertEquivalent({{DIFF_DELETE, 'abc'}, {DIFF_EQUAL, 'xx'}, {DIFF_INSERT, 'def'}, {DIFF_DELETE, 'ABC'}, {DIFF_EQUAL, 'XX'}, {DIFF_INSERT, 'DEF'}}, diffs)
+  assertEquivalent({{DIFF_DELETE, 'abc'}, {DIFF_EQUAL, 'xxx'}, {DIFF_INSERT, 'def'}}, diffs)
+  -- Reverse overlap elimination.
+  diffs = {{DIFF_DELETE, 'xxxabc'}, {DIFF_INSERT, 'defxxx'}}
+  dmp.diff_cleanupSemantic(diffs)
+  assertEquivalent({{DIFF_INSERT, 'def'}, {DIFF_EQUAL, 'xxx'}, {DIFF_DELETE, 'abc'}}, diffs)
+  -- Two overlap eliminations.
+  diffs = {{DIFF_DELETE, 'abcd1212'}, {DIFF_INSERT, '1212efghi'}, {DIFF_EQUAL, '----'}, {DIFF_DELETE, 'A3'}, {DIFF_INSERT, '3BC'}}
+  dmp.diff_cleanupSemantic(diffs)
+  assertEquivalent({{DIFF_DELETE, 'abcd'}, {DIFF_EQUAL, '1212'}, {DIFF_INSERT, 'efghi'}, {DIFF_EQUAL, '----'}, {DIFF_DELETE, 'A'}, {DIFF_EQUAL, '3'}, {DIFF_INSERT, 'BC'}}, diffs)
 end
 
 function testDiffCleanupEfficiency()
@@ -691,6 +667,8 @@ function testDiffMain()
         {DIFF_EQUAL, ' fruit.'}
       }, dmp.diff_main('Apples are a fruit.', 'Bananas are also fruit.', false))
 
+  --[[
+  -- LUANOTE: No ability to handle Unicode.
   assertEquivalent({
         {DIFF_DELETE, 'a'},
         {DIFF_INSERT, '\u0680'},
@@ -698,6 +676,7 @@ function testDiffMain()
         {DIFF_DELETE, '\t'},
         {DIFF_INSERT, '\0'}
       }, dmp.diff_main('ax\t', '\u0680x\0', false))
+  ]]--
 
   -- Overlaps.
   assertEquivalent({

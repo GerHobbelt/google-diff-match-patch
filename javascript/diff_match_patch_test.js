@@ -142,6 +142,11 @@ function testDiffCommonOverlap() {
 
   // Overlap.
   assertEquals(3, dmp.diff_commonOverlap_('123456xxx', 'xxxabcd'));
+
+  // Unicode.
+  // Some overly clever languages (C#) may treat ligatures as equal to their
+  // component letters.  E.g. U+FB01 == 'fi'
+  assertEquals(0, dmp.diff_commonOverlap_('fi', '\ufb01i'));
 }
 
 function testDiffHalfMatch() {
@@ -178,12 +183,18 @@ function testDiffHalfMatch() {
 }
 
 function testDiffLinesToChars() {
+  function assertLinesToCharsResultEquals(a, b) {
+    assertEquals(a.chars1, b.chars1);
+    assertEquals(a.chars2, b.chars2);
+    assertEquivalent(a.lineArray, b.lineArray);
+  }
+
   // Convert lines down to characters.
-  assertEquivalent(['\x01\x02\x01', '\x02\x01\x02', ['', 'alpha\n', 'beta\n']], dmp.diff_linesToChars_('alpha\nbeta\nalpha\n', 'beta\nalpha\nbeta\n'));
+  assertLinesToCharsResultEquals({chars1: '\x01\x02\x01', chars2: '\x02\x01\x02', lineArray: ['', 'alpha\n', 'beta\n']}, dmp.diff_linesToChars_('alpha\nbeta\nalpha\n', 'beta\nalpha\nbeta\n'));
 
-  assertEquivalent(['', '\x01\x02\x03\x03', ['', 'alpha\r\n', 'beta\r\n', '\r\n']], dmp.diff_linesToChars_('', 'alpha\r\nbeta\r\n\r\n\r\n'));
+  assertLinesToCharsResultEquals({chars1: '', chars2: '\x01\x02\x03\x03', lineArray: ['', 'alpha\r\n', 'beta\r\n', '\r\n']}, dmp.diff_linesToChars_('', 'alpha\r\nbeta\r\n\r\n\r\n'));
 
-  assertEquivalent(['\x01', '\x02', ['', 'a', 'b']], dmp.diff_linesToChars_('a', 'b'));
+  assertLinesToCharsResultEquals({chars1: '\x01', chars2: '\x02', lineArray: ['', 'a', 'b']}, dmp.diff_linesToChars_('a', 'b'));
 
   // More than 256 to reveal any 8-bit limitations.
   var n = 300;
@@ -198,7 +209,7 @@ function testDiffLinesToChars() {
   var chars = charList.join('');
   assertEquals(n, chars.length);
   lineList.unshift('');
-  assertEquivalent([chars, '', lineList], dmp.diff_linesToChars_(lines, ''));
+  assertLinesToCharsResultEquals({chars1: chars, chars2: '', lineArray: lineList}, dmp.diff_linesToChars_(lines, ''));
 }
 
 function testDiffCharsToLines() {
@@ -324,6 +335,11 @@ function testDiffCleanupSemanticLossless() {
   diffs = [[DIFF_EQUAL, 'xa'], [DIFF_DELETE, 'a'], [DIFF_EQUAL, 'a']];
   dmp.diff_cleanupSemanticLossless(diffs);
   assertEquivalent([[DIFF_EQUAL, 'xaa'], [DIFF_DELETE, 'a']], diffs);
+
+  // Sentence boundaries.
+  diffs = [[DIFF_EQUAL, 'The xxx. The '], [DIFF_INSERT, 'zzz. The '], [DIFF_EQUAL, 'yyy.']];
+  dmp.diff_cleanupSemanticLossless(diffs);
+  assertEquivalent([[DIFF_EQUAL, 'The xxx.'], [DIFF_INSERT, ' The zzz.'], [DIFF_EQUAL, ' The yyy.']], diffs);
 }
 
 function testDiffCleanupSemantic() {
@@ -363,15 +379,25 @@ function testDiffCleanupSemantic() {
   dmp.diff_cleanupSemantic(diffs);
   assertEquivalent([[DIFF_EQUAL, 'The '], [DIFF_DELETE, 'cow and the '], [DIFF_EQUAL, 'cat.']], diffs);
 
-  // Overlap elimination #1.
+  // No overlap elimination.
   diffs = [[DIFF_DELETE, 'abcxx'], [DIFF_INSERT, 'xxdef']];
   dmp.diff_cleanupSemantic(diffs);
-  assertEquivalent([[DIFF_DELETE, 'abc'], [DIFF_EQUAL, 'xx'], [DIFF_INSERT, 'def']], diffs);
+  assertEquivalent([[DIFF_DELETE, 'abcxx'], [DIFF_INSERT, 'xxdef']], diffs);
 
-  // Overlap elimination #2.
-  diffs = [[DIFF_DELETE, 'abcxx'], [DIFF_INSERT, 'xxdef'], [DIFF_DELETE, 'ABCXX'], [DIFF_INSERT, 'XXDEF']];
+  // Overlap elimination.
+  diffs = [[DIFF_DELETE, 'abcxxx'], [DIFF_INSERT, 'xxxdef']];
   dmp.diff_cleanupSemantic(diffs);
-  assertEquivalent([[DIFF_DELETE, 'abc'], [DIFF_EQUAL, 'xx'], [DIFF_INSERT, 'def'], [DIFF_DELETE, 'ABC'], [DIFF_EQUAL, 'XX'], [DIFF_INSERT, 'DEF']], diffs);
+  assertEquivalent([[DIFF_DELETE, 'abc'], [DIFF_EQUAL, 'xxx'], [DIFF_INSERT, 'def']], diffs);
+
+  // Reverse overlap elimination.
+  diffs = [[DIFF_DELETE, 'xxxabc'], [DIFF_INSERT, 'defxxx']];
+  dmp.diff_cleanupSemantic(diffs);
+  assertEquivalent([[DIFF_INSERT, 'def'], [DIFF_EQUAL, 'xxx'], [DIFF_DELETE, 'abc']], diffs);
+
+  // Two overlap eliminations.
+  diffs = [[DIFF_DELETE, 'abcd1212'], [DIFF_INSERT, '1212efghi'], [DIFF_EQUAL, '----'], [DIFF_DELETE, 'A3'], [DIFF_INSERT, '3BC']];
+  dmp.diff_cleanupSemantic(diffs);
+  assertEquivalent([[DIFF_DELETE, 'abcd'], [DIFF_EQUAL, '1212'], [DIFF_INSERT, 'efghi'], [DIFF_EQUAL, '----'], [DIFF_DELETE, 'A'], [DIFF_EQUAL, '3'], [DIFF_INSERT, 'BC']], diffs);
 }
 
 function testDiffCleanupEfficiency() {
@@ -699,7 +725,7 @@ function testMatchMain() {
 
 function testPatchObj() {
   // Patch Object.
-  var p = new patch_obj();
+  var p = new diff_match_patch.patch_obj();
   p.start1 = 20;
   p.start2 = 21;
   p.length1 = 18;

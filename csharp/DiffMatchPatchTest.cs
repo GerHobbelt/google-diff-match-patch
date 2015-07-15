@@ -71,6 +71,11 @@ namespace nicTest {
 
       // Overlap.
       Assert.AreEqual(3, dmp.diff_commonOverlap("123456xxx", "xxxabcd"));
+
+      // Unicode.
+      // Some overly clever languages (C#) may treat ligatures as equal to their
+      // component letters.  E.g. U+FB01 == 'fi'
+      Assert.AreEqual(0, dmp.diff_commonOverlap("fi", "\ufb01i"));
     }
 
     [Test()]
@@ -335,6 +340,17 @@ namespace nicTest {
       CollectionAssert.AreEqual(new List<Diff> {
           new Diff(Operation.EQUAL, "xaa"),
           new Diff(Operation.DELETE, "a")}, diffs);
+
+      // Sentence boundaries.
+      diffs = new List<Diff> {
+          new Diff(Operation.EQUAL, "The xxx. The "),
+          new Diff(Operation.INSERT, "zzz. The "),
+          new Diff(Operation.EQUAL, "yyy.")};
+      dmp.diff_cleanupSemanticLossless(diffs);
+      CollectionAssert.AreEqual(new List<Diff> {
+          new Diff(Operation.EQUAL, "The xxx."),
+          new Diff(Operation.INSERT, " The zzz."),
+          new Diff(Operation.EQUAL, " The yyy.")}, diffs);
     }
 
     [Test()]
@@ -421,30 +437,51 @@ namespace nicTest {
           new Diff(Operation.DELETE, "cow and the "),
           new Diff(Operation.EQUAL, "cat.")}, diffs);
 
-      // Overlap elimination #1.
+      // No overlap elimination.
       diffs = new List<Diff> {
           new Diff(Operation.DELETE, "abcxx"),
           new Diff(Operation.INSERT, "xxdef")};
       dmp.diff_cleanupSemantic(diffs);
       CollectionAssert.AreEqual(new List<Diff> {
-          new Diff(Operation.DELETE, "abc"),
-          new Diff(Operation.EQUAL, "xx"),
-          new Diff(Operation.INSERT, "def")}, diffs);
-
-      // Overlap elimination #2.
-      diffs = new List<Diff> {
           new Diff(Operation.DELETE, "abcxx"),
-          new Diff(Operation.INSERT, "xxdef"),
-          new Diff(Operation.DELETE, "ABCXX"),
-          new Diff(Operation.INSERT, "XXDEF")};
+          new Diff(Operation.INSERT, "xxdef")}, diffs);
+
+      // Overlap elimination.
+      diffs = new List<Diff> {
+          new Diff(Operation.DELETE, "abcxxx"),
+          new Diff(Operation.INSERT, "xxxdef")};
       dmp.diff_cleanupSemantic(diffs);
       CollectionAssert.AreEqual(new List<Diff> {
           new Diff(Operation.DELETE, "abc"),
-          new Diff(Operation.EQUAL, "xx"),
+          new Diff(Operation.EQUAL, "xxx"),
+          new Diff(Operation.INSERT, "def")}, diffs);
+
+      // Reverse overlap elimination.
+      diffs = new List<Diff> {
+          new Diff(Operation.DELETE, "xxxabc"),
+          new Diff(Operation.INSERT, "defxxx")};
+      dmp.diff_cleanupSemantic(diffs);
+      CollectionAssert.AreEqual(new List<Diff> {
           new Diff(Operation.INSERT, "def"),
-          new Diff(Operation.DELETE, "ABC"),
-          new Diff(Operation.EQUAL, "XX"),
-          new Diff(Operation.INSERT, "DEF")}, diffs);
+          new Diff(Operation.EQUAL, "xxx"),
+          new Diff(Operation.DELETE, "abc")}, diffs);
+
+      // Two overlap eliminations.
+      diffs = new List<Diff> {
+          new Diff(Operation.DELETE, "abcd1212"),
+          new Diff(Operation.INSERT, "1212efghi"),
+          new Diff(Operation.EQUAL, "----"),
+          new Diff(Operation.DELETE, "A3"),
+          new Diff(Operation.INSERT, "3BC")};
+      dmp.diff_cleanupSemantic(diffs);
+      CollectionAssert.AreEqual(new List<Diff> {
+          new Diff(Operation.DELETE, "abcd"),
+          new Diff(Operation.EQUAL, "1212"),
+          new Diff(Operation.INSERT, "efghi"),
+          new Diff(Operation.EQUAL, "----"),
+          new Diff(Operation.DELETE, "A"),
+          new Diff(Operation.EQUAL, "3"),
+          new Diff(Operation.INSERT, "BC")}, diffs);
     }
 
     [Test()]
@@ -678,11 +715,11 @@ namespace nicTest {
       // the insertion and deletion pairs are swapped.
       // If the order changes, tweak this test as required.
       List<Diff> diffs = new List<Diff> {new Diff(Operation.DELETE, "c"), new Diff(Operation.INSERT, "m"), new Diff(Operation.EQUAL, "a"), new Diff(Operation.DELETE, "t"), new Diff(Operation.INSERT, "p")};
-      Assert.AreEqual(diffs, dmp.diff_bisect(a, b, DateTime.MaxValue));
+      CollectionAssert.AreEqual(diffs, dmp.diff_bisect(a, b, DateTime.MaxValue));
 
       // Timeout.
       diffs = new List<Diff> {new Diff(Operation.DELETE, "cat"), new Diff(Operation.INSERT, "map")};
-      Assert.AreEqual(diffs, dmp.diff_bisect(a, b, DateTime.MinValue));
+      CollectionAssert.AreEqual(diffs, dmp.diff_bisect(a, b, DateTime.MinValue));
     }
 
     [Test()]

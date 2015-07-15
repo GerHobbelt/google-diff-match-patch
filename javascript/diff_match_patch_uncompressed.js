@@ -42,8 +42,8 @@ function diff_match_patch() {
   // A match this many characters away from the expected location will add
   // 1.0 to the score (0.0 is a perfect match).
   this.Match_Distance = 1000;
-  // When deleting a large block of text (over ~64 characters), how close does
-  // the contents have to match the expected contents. (0.0 = perfection,
+  // When deleting a large block of text (over ~64 characters), how close do
+  // the contents have to be to match the expected contents. (0.0 = perfection,
   // 1.0 = very loose).  Note that Match_Threshold controls how closely the
   // end points of a delete need to match.
   this.Patch_DeleteThreshold = 0.5;
@@ -67,7 +67,7 @@ var DIFF_DELETE = -1;
 var DIFF_INSERT = 1;
 var DIFF_EQUAL = 0;
 
-/** @typedef {!Array.<number|string|Array>} */
+/** @typedef {{0: number, 1: string, 2: array}} */
 diff_match_patch.Diff;
 
 
@@ -295,7 +295,6 @@ diff_match_patch.prototype.diff_compute_ = function(text1, text2, checklines,
     // After the previous speedup, the character can't be an equality.
     return [[DIFF_DELETE, text1], [DIFF_INSERT, text2]];
   }
-  longtext = shorttext = null;  // Garbage collect.
 
   // Check to see if the problem can be split in two.
   var hm = this.diff_halfMatch_(text1, text2);
@@ -334,11 +333,11 @@ diff_match_patch.prototype.diff_compute_ = function(text1, text2, checklines,
 diff_match_patch.prototype.diff_lineMode_ = function(text1, text2, deadline) {
   // Scan the text on a line-by-line basis first.
   var a = this.diff_linesToChars_(text1, text2);
-  text1 = /** @type {string} */(a[0]);
-  text2 = /** @type {string} */(a[1]);
-  var linearray = /** @type {!Array.<string>} */(a[2]);
+  text1 = a.chars1;
+  text2 = a.chars2;
+  var linearray = a.lineArray;
 
-  var diffs = this.diff_bisect_(text1, text2, deadline);
+  var diffs = this.diff_main(text1, text2, false, deadline);
 
   // Convert the diff back to original text.
   this.diff_charsToLines_(diffs, linearray);
@@ -367,10 +366,10 @@ diff_match_patch.prototype.diff_lineMode_ = function(text1, text2, deadline) {
         // Upon reaching an equality, check for prior redundancies.
         if (count_delete >= 1 && count_insert >= 1) {
           // Delete the offending records and add the merged ones.
-          var a = this.diff_main(text_delete, text_insert, false, deadline);
           diffs.splice(pointer - count_delete - count_insert,
                        count_delete + count_insert);
           pointer = pointer - count_delete - count_insert;
+          var a = this.diff_main(text_delete, text_insert, false, deadline);
           for (var j = a.length - 1; j >= 0; j--) {
             diffs.splice(pointer, 0, a[j]);
           }
@@ -437,7 +436,7 @@ diff_match_patch.prototype.diff_bisect_ = function(text1, text2, deadline) {
     for (var k1 = -d + k1start; k1 <= d - k1end; k1 += 2) {
       var k1_offset = v_offset + k1;
       var x1;
-      if (k1 == -d || k1 != d && v1[k1_offset - 1] < v1[k1_offset + 1]) {
+      if (k1 == -d || (k1 != d && v1[k1_offset - 1] < v1[k1_offset + 1])) {
         x1 = v1[k1_offset + 1];
       } else {
         x1 = v1[k1_offset - 1] + 1;
@@ -472,7 +471,7 @@ diff_match_patch.prototype.diff_bisect_ = function(text1, text2, deadline) {
     for (var k2 = -d + k2start; k2 <= d - k2end; k2 += 2) {
       var k2_offset = v_offset + k2;
       var x2;
-      if (k2 == -d || k2 != d && v2[k2_offset - 1] < v2[k2_offset + 1]) {
+      if (k2 == -d || (k2 != d && v2[k2_offset - 1] < v2[k2_offset + 1])) {
         x2 = v2[k2_offset + 1];
       } else {
         x2 = v2[k2_offset - 1] + 1;
@@ -543,9 +542,10 @@ diff_match_patch.prototype.diff_bisectSplit_ = function(text1, text2, x, y,
  * hashes where each Unicode character represents one line.
  * @param {string} text1 First string.
  * @param {string} text2 Second string.
- * @return {!Array.<string|!Array.<string>>} Three element Array, containing the
- *     encoded text1, the encoded text2 and the array of unique strings.  The
- *     zeroth element of the array of unique strings is intentionally blank.
+ * @return {{chars1: string, chars2: string, lineArray: !Array.<string>}}
+ *     An object containing the encoded text1, the encoded text2 and
+ *     the array of unique strings.
+ *     The zeroth element of the array of unique strings is intentionally blank.
  * @private
  */
 diff_match_patch.prototype.diff_linesToChars_ = function(text1, text2) {
@@ -595,7 +595,7 @@ diff_match_patch.prototype.diff_linesToChars_ = function(text1, text2) {
 
   var chars1 = diff_linesToCharsMunge_(text1);
   var chars2 = diff_linesToCharsMunge_(text2);
-  return [chars1, chars2, lineArray];
+  return {chars1: chars1, chars2: chars2, lineArray: lineArray};
 };
 
 
@@ -838,7 +838,8 @@ diff_match_patch.prototype.diff_cleanupSemantic = function(diffs) {
   var equalities = [];  // Stack of indices where equalities are found.
   var equalitiesLength = 0;  // Keeping our own length var is faster in JS.
   /** @type {?string} */
-  var lastequality = null;  // Always equal to equalities[equalitiesLength-1][1]
+  var lastequality = null;
+  // Always equal to diffs[equalities[equalitiesLength - 1]][1]
   var pointer = 0;  // Index of current position.
   // Number of characters that changed prior to the equality.
   var length_insertions1 = 0;
@@ -853,14 +854,16 @@ diff_match_patch.prototype.diff_cleanupSemantic = function(diffs) {
       length_deletions1 = length_deletions2;
       length_insertions2 = 0;
       length_deletions2 = 0;
-      lastequality = /** @type {string} */(diffs[pointer][1]);
+      lastequality = diffs[pointer][1];
     } else {  // An insertion or deletion.
       if (diffs[pointer][0] == DIFF_INSERT) {
         length_insertions2 += diffs[pointer][1].length;
       } else {
         length_deletions2 += diffs[pointer][1].length;
       }
-      if (lastequality !== null && (lastequality.length <=
+      // Eliminate an equality that is smaller or equal to the edits on both
+      // sides of it.
+      if (lastequality && (lastequality.length <=
           Math.max(length_insertions1, length_deletions1)) &&
           (lastequality.length <= Math.max(length_insertions2,
                                            length_deletions2))) {
@@ -892,23 +895,45 @@ diff_match_patch.prototype.diff_cleanupSemantic = function(diffs) {
   this.diff_cleanupSemanticLossless(diffs);
 
   // Find any overlaps between deletions and insertions.
-  // e.g: <del>abcxx</del><ins>xxdef</ins>
-  //   -> <del>abc</del>xx<ins>def</ins>
+  // e.g: <del>abcxxx</del><ins>xxxdef</ins>
+  //   -> <del>abc</del>xxx<ins>def</ins>
+  // e.g: <del>xxxabc</del><ins>defxxx</ins>
+  //   -> <ins>def</ins>xxx<del>abc</del>
+  // Only extract an overlap if it is as big as the edit ahead or behind it.
   pointer = 1;
   while (pointer < diffs.length) {
     if (diffs[pointer - 1][0] == DIFF_DELETE &&
         diffs[pointer][0] == DIFF_INSERT) {
-      var deletion = /** @type {string} */(diffs[pointer - 1][1]);
-      var insertion = /** @type {string} */(diffs[pointer][1]);
-      var overlap_length = this.diff_commonOverlap_(deletion, insertion);
-      if (overlap_length) {
-        // Overlap found.  Insert an equality and trim the surrounding edits.
-        diffs.splice(pointer, 0,
-            [DIFF_EQUAL, insertion.substring(0, overlap_length)]);
-        diffs[pointer - 1][1] =
-            deletion.substring(0, deletion.length - overlap_length);
-        diffs[pointer + 1][1] = insertion.substring(overlap_length);
-        pointer++;
+      var deletion = diffs[pointer - 1][1];
+      var insertion = diffs[pointer][1];
+      var overlap_length1 = this.diff_commonOverlap_(deletion, insertion);
+      var overlap_length2 = this.diff_commonOverlap_(insertion, deletion);
+      if (overlap_length1 >= overlap_length2) {
+        if (overlap_length1 >= deletion.length / 2 ||
+            overlap_length1 >= insertion.length / 2) {
+          // Overlap found.  Insert an equality and trim the surrounding edits.
+          diffs.splice(pointer, 0,
+              [DIFF_EQUAL, insertion.substring(0, overlap_length1)]);
+          diffs[pointer - 1][1] =
+              deletion.substring(0, deletion.length - overlap_length1);
+          diffs[pointer + 1][1] = insertion.substring(overlap_length1);
+          pointer++;
+        }
+      } else {
+        if (overlap_length2 >= deletion.length / 2 ||
+            overlap_length2 >= insertion.length / 2) {
+          // Reverse overlap found.
+          // Insert an equality and swap and trim the surrounding edits.
+          diffs.splice(pointer, 0,
+              [DIFF_EQUAL, deletion.substring(0, overlap_length2)]);
+          diffs[pointer - 1][0] = DIFF_INSERT;
+          diffs[pointer - 1][1] =
+              insertion.substring(0, insertion.length - overlap_length2);
+          diffs[pointer + 1][0] = DIFF_DELETE;
+          diffs[pointer + 1][1] =
+              deletion.substring(overlap_length2);
+          pointer++;
+        }
       }
       pointer++;
     }
@@ -924,18 +949,11 @@ diff_match_patch.prototype.diff_cleanupSemantic = function(diffs) {
  * @param {!Array.<!diff_match_patch.Diff>} diffs Array of diff tuples.
  */
 diff_match_patch.prototype.diff_cleanupSemanticLossless = function(diffs) {
-  // Define some regex patterns for matching boundaries.
-  var punctuation = /[^a-zA-Z0-9]/;
-  var whitespace = /\s/;
-  var linebreak = /[\r\n]/;
-  var blanklineEnd = /\n\r?\n$/;
-  var blanklineStart = /^\r?\n\r?\n/;
-
   /**
    * Given two strings, compute a score representing whether the internal
    * boundary falls on logical boundaries.
-   * Scores range from 5 (best) to 0 (worst).
-   * Closure, makes reference to regex patterns defined above.
+   * Scores range from 6 (best) to 0 (worst).
+   * Closure, but does not reference any external variables.
    * @param {string} one First string.
    * @param {string} two Second string.
    * @return {number} The score.
@@ -944,7 +962,7 @@ diff_match_patch.prototype.diff_cleanupSemanticLossless = function(diffs) {
   function diff_cleanupSemanticScore_(one, two) {
     if (!one || !two) {
       // Edges are the best.
-      return 5;
+      return 6;
     }
 
     // Each port of this function behaves slightly differently due to
@@ -952,27 +970,40 @@ diff_match_patch.prototype.diff_cleanupSemanticLossless = function(diffs) {
     // 'whitespace'.  Since this function's purpose is largely cosmetic,
     // the choice has been made to use each language's native features
     // rather than force total conformity.
-    var score = 0;
-    // One point for non-alphanumeric.
-    if (one.charAt(one.length - 1).match(punctuation) ||
-        two.charAt(0).match(punctuation)) {
-      score++;
+    var char1 = one.charAt(one.length - 1);
+    var char2 = two.charAt(0);
+    var nonAlphaNumeric1 = char1.match(diff_match_patch.nonAlphaNumericRegex_);
+    var nonAlphaNumeric2 = char2.match(diff_match_patch.nonAlphaNumericRegex_);
+    var whitespace1 = nonAlphaNumeric1 &&
+        char1.match(diff_match_patch.whitespaceRegex_);
+    var whitespace2 = nonAlphaNumeric2 &&
+        char2.match(diff_match_patch.whitespaceRegex_);
+    var lineBreak1 = whitespace1 &&
+        char1.match(diff_match_patch.linebreakRegex_);
+    var lineBreak2 = whitespace2 &&
+        char2.match(diff_match_patch.linebreakRegex_);
+    var blankLine1 = lineBreak1 &&
+        one.match(diff_match_patch.blanklineEndRegex_);
+    var blankLine2 = lineBreak2 &&
+        two.match(diff_match_patch.blanklineStartRegex_);
+
+    if (blankLine1 || blankLine2) {
+      // Five points for blank lines.
+      return 5;
+    } else if (lineBreak1 || lineBreak2) {
+      // Four points for line breaks.
+      return 4;
+    } else if (nonAlphaNumeric1 && !whitespace1 && whitespace2) {
+      // Three points for end of sentences.
+      return 3;
+    } else if (whitespace1 || whitespace2) {
       // Two points for whitespace.
-      if (one.charAt(one.length - 1).match(whitespace) ||
-          two.charAt(0).match(whitespace)) {
-        score++;
-        // Three points for line breaks.
-        if (one.charAt(one.length - 1).match(linebreak) ||
-            two.charAt(0).match(linebreak)) {
-          score++;
-          // Four points for blank lines.
-          if (one.match(blanklineEnd) || two.match(blanklineStart)) {
-            score++;
-          }
-        }
-      }
+      return 2;
+    } else if (nonAlphaNumeric1 || nonAlphaNumeric2) {
+      // One point for non-alphanumeric.
+      return 1;
     }
-    return score;
+    return 0;
   }
 
   var pointer = 1;
@@ -981,9 +1012,9 @@ diff_match_patch.prototype.diff_cleanupSemanticLossless = function(diffs) {
     if (diffs[pointer - 1][0] == DIFF_EQUAL &&
         diffs[pointer + 1][0] == DIFF_EQUAL) {
       // This is a single edit surrounded by equalities.
-      var equality1 = /** @type {string} */(diffs[pointer - 1][1]);
-      var edit = /** @type {string} */(diffs[pointer][1]);
-      var equality2 = /** @type {string} */(diffs[pointer + 1][1]);
+      var equality1 = diffs[pointer - 1][1];
+      var edit = diffs[pointer][1];
+      var equality2 = diffs[pointer + 1][1];
 
       // First, shift the edit as far left as possible.
       var commonOffset = this.diff_commonSuffix(equality1, edit);
@@ -1036,6 +1067,12 @@ diff_match_patch.prototype.diff_cleanupSemanticLossless = function(diffs) {
   }
 };
 
+// Define some regex patterns for matching boundaries.
+diff_match_patch.nonAlphaNumericRegex_ = /[^a-zA-Z0-9]/;
+diff_match_patch.whitespaceRegex_ = /\s/;
+diff_match_patch.linebreakRegex_ = /[\r\n]/;
+diff_match_patch.blanklineEndRegex_ = /\n\r?\n$/;
+diff_match_patch.blanklineStartRegex_ = /^\r?\n\r?\n/;
 
 /**
  * Reduce the number of edits by eliminating operationally trivial equalities.
@@ -1045,7 +1082,9 @@ diff_match_patch.prototype.diff_cleanupEfficiency = function(diffs) {
   var changes = false;
   var equalities = [];  // Stack of indices where equalities are found.
   var equalitiesLength = 0;  // Keeping our own length var is faster in JS.
-  var lastequality = '';  // Always equal to equalities[equalitiesLength-1][1]
+  /** @type {?string} */
+  var lastequality = null;
+  // Always equal to diffs[equalities[equalitiesLength - 1]][1]
   var pointer = 0;  // Index of current position.
   // Is there an insertion operation before the last equality.
   var pre_ins = false;
@@ -1067,7 +1106,7 @@ diff_match_patch.prototype.diff_cleanupEfficiency = function(diffs) {
       } else {
         // Not a candidate, and can never become one.
         equalitiesLength = 0;
-        lastequality = '';
+        lastequality = null;
       }
       post_ins = post_del = false;
     } else {  // An insertion or deletion.
@@ -1093,7 +1132,7 @@ diff_match_patch.prototype.diff_cleanupEfficiency = function(diffs) {
         // Change second copy to insert.
         diffs[equalities[equalitiesLength - 1] + 1][0] = DIFF_INSERT;
         equalitiesLength--;  // Throw away the equality we just deleted;
-        lastequality = '';
+        lastequality = null;
         if (pre_ins && pre_del) {
           // No changes made which could affect previous entry, keep going.
           post_ins = post_del = true;
@@ -1174,10 +1213,10 @@ diff_match_patch.prototype.diff_cleanupMerge = function(diffs) {
           }
           // Delete the offending records and add the merged ones.
           if (count_delete === 0) {
-            diffs.splice(pointer - count_delete - count_insert,
+            diffs.splice(pointer - count_insert,
                 count_delete + count_insert, [DIFF_INSERT, text_insert]);
           } else if (count_insert === 0) {
-            diffs.splice(pointer - count_delete - count_insert,
+            diffs.splice(pointer - count_delete,
                 count_delete + count_insert, [DIFF_DELETE, text_delete]);
           } else {
             diffs.splice(pointer - count_delete - count_insert,
@@ -1288,7 +1327,6 @@ diff_match_patch.prototype.diff_xIndex = function(diffs, loc) {
  */
 diff_match_patch.prototype.diff_prettyHtml = function(diffs) {
   var html = [];
-  var i = 0;
   var pattern_amp = /&/g;
   var pattern_lt = /</g;
   var pattern_gt = />/g;
@@ -1308,9 +1346,6 @@ diff_match_patch.prototype.diff_prettyHtml = function(diffs) {
       case DIFF_EQUAL:
         html[x] = '<span>' + text + '</span>';
         break;
-    }
-    if (op !== DIFF_DELETE) {
-      i += data.length;
     }
   }
   return html.join('');
@@ -1585,7 +1620,7 @@ diff_match_patch.prototype.match_bitap_ = function(text, pattern, loc) {
       if (d === 0) {  // First pass: exact match.
         rd[j] = ((rd[j + 1] << 1) | 1) & charMatch;
       } else {  // Subsequent passes: fuzzy match.
-        rd[j] = ((rd[j + 1] << 1) | 1) & charMatch |
+        rd[j] = (((rd[j + 1] << 1) | 1) & charMatch) |
                 (((last_rd[j + 1] | last_rd[j]) << 1) | 1) |
                 last_rd[j + 1];
       }
@@ -1641,7 +1676,7 @@ diff_match_patch.prototype.match_alphabet_ = function(pattern) {
 /**
  * Increase the context until it is unique,
  * but don't let the pattern expand beyond Match_MaxBits.
- * @param {!patch_obj} patch The patch to grow.
+ * @param {!diff_match_patch.patch_obj} patch The patch to grow.
  * @param {string} text Source text.
  * @private
  */
@@ -1705,7 +1740,7 @@ diff_match_patch.prototype.patch_addContext_ = function(patch, text) {
  * Array of diff tuples for text1 to text2 (method 3) or undefined (method 2).
  * @param {string|!Array.<!diff_match_patch.Diff>} opt_c Array of diff tuples
  * for text1 to text2 (method 4) or undefined (methods 1,2,3).
- * @return {!Array.<!patch_obj>} Array of patch objects.
+ * @return {!Array.<!diff_match_patch.patch_obj>} Array of Patch objects.
  */
 diff_match_patch.prototype.patch_make = function(a, opt_b, opt_c) {
   var text1, diffs;
@@ -1744,7 +1779,7 @@ diff_match_patch.prototype.patch_make = function(a, opt_b, opt_c) {
     return [];  // Get rid of the null case.
   }
   var patches = [];
-  var patch = new patch_obj();
+  var patch = new diff_match_patch.patch_obj();
   var patchDiffLength = 0;  // Keeping our own length var is faster in JS.
   var char_count1 = 0;  // Number of characters into the text1 string.
   var char_count2 = 0;  // Number of characters into the text2 string.
@@ -1789,7 +1824,7 @@ diff_match_patch.prototype.patch_make = function(a, opt_b, opt_c) {
           if (patchDiffLength) {
             this.patch_addContext_(patch, prepatch_text);
             patches.push(patch);
-            patch = new patch_obj();
+            patch = new diff_match_patch.patch_obj();
             patchDiffLength = 0;
             // Unlike Unidiff, our patch lists have a rolling context.
             // http://code.google.com/p/google-diff-match-patch/wiki/Unidiff
@@ -1822,15 +1857,15 @@ diff_match_patch.prototype.patch_make = function(a, opt_b, opt_c) {
 
 /**
  * Given an array of patches, return another array that is identical.
- * @param {!Array.<!patch_obj>} patches Array of patch objects.
- * @return {!Array.<!patch_obj>} Array of patch objects.
+ * @param {!Array.<!diff_match_patch.patch_obj>} patches Array of Patch objects.
+ * @return {!Array.<!diff_match_patch.patch_obj>} Array of Patch objects.
  */
 diff_match_patch.prototype.patch_deepCopy = function(patches) {
   // Making deep copies is hard in JavaScript.
   var patchesCopy = [];
   for (var x = 0; x < patches.length; x++) {
     var patch = patches[x];
-    var patchCopy = new patch_obj();
+    var patchCopy = new diff_match_patch.patch_obj();
     patchCopy.diffs = [];
     for (var y = 0; y < patch.diffs.length; y++) {
       patchCopy.diffs[y] = patch.diffs[y].slice();
@@ -1848,7 +1883,7 @@ diff_match_patch.prototype.patch_deepCopy = function(patches) {
 /**
  * Merge a set of patches onto the text.  Return a patched text, as well
  * as a list of true/false values indicating which patches were applied.
- * @param {!Array.<!patch_obj>} patches Array of patch objects.
+ * @param {!Array.<!diff_match_patch.patch_obj>} patches Array of Patch objects.
  * @param {string} text Old text.
  * @return {!Array.<string|!Array.<boolean>>} Two element Array, containing the
  *      new text and an array of boolean values.
@@ -1956,7 +1991,7 @@ diff_match_patch.prototype.patch_apply = function(patches, text) {
 /**
  * Add some padding on text start and end so that edges can match something.
  * Intended to be called only from within patch_apply.
- * @param {!Array.<!patch_obj>} patches Array of patch objects.
+ * @param {!Array.<!diff_match_patch.patch_obj>} patches Array of Patch objects.
  * @return {string} The padding string added to each side.
  */
 diff_match_patch.prototype.patch_addPadding = function(patches) {
@@ -2016,88 +2051,89 @@ diff_match_patch.prototype.patch_addPadding = function(patches) {
  * Look through the patches and break up any which are longer than the maximum
  * limit of the match algorithm.
  * Intended to be called only from within patch_apply.
- * @param {!Array.<!patch_obj>} patches Array of patch objects.
+ * @param {!Array.<!diff_match_patch.patch_obj>} patches Array of Patch objects.
  */
 diff_match_patch.prototype.patch_splitMax = function(patches) {
   var patch_size = this.Match_MaxBits;
   for (var x = 0; x < patches.length; x++) {
-    if (patches[x].length1 > patch_size) {
-      var bigpatch = patches[x];
-      // Remove the big old patch.
-      patches.splice(x--, 1);
-      var start1 = bigpatch.start1;
-      var start2 = bigpatch.start2;
-      var precontext = '';
-      while (bigpatch.diffs.length !== 0) {
-        // Create one of several smaller patches.
-        var patch = new patch_obj();
-        var empty = true;
-        patch.start1 = start1 - precontext.length;
-        patch.start2 = start2 - precontext.length;
-        if (precontext !== '') {
-          patch.length1 = patch.length2 = precontext.length;
-          patch.diffs.push([DIFF_EQUAL, precontext]);
-        }
-        while (bigpatch.diffs.length !== 0 &&
-               patch.length1 < patch_size - this.Patch_Margin) {
-          var diff_type = bigpatch.diffs[0][0];
-          var diff_text = bigpatch.diffs[0][1];
-          if (diff_type === DIFF_INSERT) {
-            // Insertions are harmless.
+    if (patches[x].length1 <= patch_size) {
+      continue;
+    }
+    var bigpatch = patches[x];
+    // Remove the big old patch.
+    patches.splice(x--, 1);
+    var start1 = bigpatch.start1;
+    var start2 = bigpatch.start2;
+    var precontext = '';
+    while (bigpatch.diffs.length !== 0) {
+      // Create one of several smaller patches.
+      var patch = new diff_match_patch.patch_obj();
+      var empty = true;
+      patch.start1 = start1 - precontext.length;
+      patch.start2 = start2 - precontext.length;
+      if (precontext !== '') {
+        patch.length1 = patch.length2 = precontext.length;
+        patch.diffs.push([DIFF_EQUAL, precontext]);
+      }
+      while (bigpatch.diffs.length !== 0 &&
+             patch.length1 < patch_size - this.Patch_Margin) {
+        var diff_type = bigpatch.diffs[0][0];
+        var diff_text = bigpatch.diffs[0][1];
+        if (diff_type === DIFF_INSERT) {
+          // Insertions are harmless.
+          patch.length2 += diff_text.length;
+          start2 += diff_text.length;
+          patch.diffs.push(bigpatch.diffs.shift());
+          empty = false;
+        } else if (diff_type === DIFF_DELETE && patch.diffs.length == 1 &&
+                   patch.diffs[0][0] == DIFF_EQUAL &&
+                   diff_text.length > 2 * patch_size) {
+          // This is a large deletion.  Let it pass in one chunk.
+          patch.length1 += diff_text.length;
+          start1 += diff_text.length;
+          empty = false;
+          patch.diffs.push([diff_type, diff_text]);
+          bigpatch.diffs.shift();
+        } else {
+          // Deletion or equality.  Only take as much as we can stomach.
+          diff_text = diff_text.substring(0,
+              patch_size - patch.length1 - this.Patch_Margin);
+          patch.length1 += diff_text.length;
+          start1 += diff_text.length;
+          if (diff_type === DIFF_EQUAL) {
             patch.length2 += diff_text.length;
             start2 += diff_text.length;
-            patch.diffs.push(bigpatch.diffs.shift());
+          } else {
             empty = false;
-          } else if (diff_type === DIFF_DELETE && patch.diffs.length == 1 &&
-                     patch.diffs[0][0] == DIFF_EQUAL &&
-                     diff_text.length > 2 * patch_size) {
-            // This is a large deletion.  Let it pass in one chunk.
-            patch.length1 += diff_text.length;
-            start1 += diff_text.length;
-            empty = false;
-            patch.diffs.push([diff_type, diff_text]);
+          }
+          patch.diffs.push([diff_type, diff_text]);
+          if (diff_text == bigpatch.diffs[0][1]) {
             bigpatch.diffs.shift();
           } else {
-            // Deletion or equality.  Only take as much as we can stomach.
-            diff_text = diff_text.substring(0,
-                patch_size - patch.length1 - this.Patch_Margin);
-            patch.length1 += diff_text.length;
-            start1 += diff_text.length;
-            if (diff_type === DIFF_EQUAL) {
-              patch.length2 += diff_text.length;
-              start2 += diff_text.length;
-            } else {
-              empty = false;
-            }
-            patch.diffs.push([diff_type, diff_text]);
-            if (diff_text == bigpatch.diffs[0][1]) {
-              bigpatch.diffs.shift();
-            } else {
-              bigpatch.diffs[0][1] =
-                  bigpatch.diffs[0][1].substring(diff_text.length);
-            }
+            bigpatch.diffs[0][1] =
+                bigpatch.diffs[0][1].substring(diff_text.length);
           }
         }
-        // Compute the head context for the next patch.
-        precontext = this.diff_text2(patch.diffs);
-        precontext =
-            precontext.substring(precontext.length - this.Patch_Margin);
-        // Append the end context for this patch.
-        var postcontext = this.diff_text1(bigpatch.diffs)
-                              .substring(0, this.Patch_Margin);
-        if (postcontext !== '') {
-          patch.length1 += postcontext.length;
-          patch.length2 += postcontext.length;
-          if (patch.diffs.length !== 0 &&
-              patch.diffs[patch.diffs.length - 1][0] === DIFF_EQUAL) {
-            patch.diffs[patch.diffs.length - 1][1] += postcontext;
-          } else {
-            patch.diffs.push([DIFF_EQUAL, postcontext]);
-          }
+      }
+      // Compute the head context for the next patch.
+      precontext = this.diff_text2(patch.diffs);
+      precontext =
+          precontext.substring(precontext.length - this.Patch_Margin);
+      // Append the end context for this patch.
+      var postcontext = this.diff_text1(bigpatch.diffs)
+                            .substring(0, this.Patch_Margin);
+      if (postcontext !== '') {
+        patch.length1 += postcontext.length;
+        patch.length2 += postcontext.length;
+        if (patch.diffs.length !== 0 &&
+            patch.diffs[patch.diffs.length - 1][0] === DIFF_EQUAL) {
+          patch.diffs[patch.diffs.length - 1][1] += postcontext;
+        } else {
+          patch.diffs.push([DIFF_EQUAL, postcontext]);
         }
-        if (!empty) {
-          patches.splice(++x, 0, patch);
-        }
+      }
+      if (!empty) {
+        patches.splice(++x, 0, patch);
       }
     }
   }
@@ -2106,7 +2142,7 @@ diff_match_patch.prototype.patch_splitMax = function(patches) {
 
 /**
  * Take a list of patches and return a textual representation.
- * @param {!Array.<!patch_obj>} patches Array of patch objects.
+ * @param {!Array.<!diff_match_patch.patch_obj>} patches Array of Patch objects.
  * @return {string} Text representation of patches.
  */
 diff_match_patch.prototype.patch_toText = function(patches) {
@@ -2119,9 +2155,9 @@ diff_match_patch.prototype.patch_toText = function(patches) {
 
 
 /**
- * Parse a textual representation of patches and return a list of patch objects.
+ * Parse a textual representation of patches and return a list of Patch objects.
  * @param {string} textline Text representation of patches.
- * @return {!Array.<!patch_obj>} Array of patch objects.
+ * @return {!Array.<!diff_match_patch.patch_obj>} Array of Patch objects.
  * @throws {!Error} If invalid input.
  */
 diff_match_patch.prototype.patch_fromText = function(textline) {
@@ -2137,7 +2173,7 @@ diff_match_patch.prototype.patch_fromText = function(textline) {
     if (!m) {
       throw new Error('Invalid patch string: ' + text[textPointer]);
     }
-    var patch = new patch_obj();
+    var patch = new diff_match_patch.patch_obj();
     patches.push(patch);
     patch.start1 = parseInt(m[1], 10);
     if (m[2] === '') {
@@ -2199,7 +2235,7 @@ diff_match_patch.prototype.patch_fromText = function(textline) {
  * Class representing one patch operation.
  * @constructor
  */
-function patch_obj() {
+diff_match_patch.patch_obj = function() {
   /** @type {!Array.<!diff_match_patch.Diff>} */
   this.diffs = [];
   /** @type {?number} */
@@ -2210,7 +2246,7 @@ function patch_obj() {
   this.length1 = 0;
   /** @type {number} */
   this.length2 = 0;
-}
+};
 
 
 /**
@@ -2219,7 +2255,7 @@ function patch_obj() {
  * Indicies are printed as 1-based, not 0-based.
  * @return {string} The GNU diff string.
  */
-patch_obj.prototype.toString = function() {
+diff_match_patch.patch_obj.prototype.toString = function() {
   var coords1, coords2;
   if (this.length1 === 0) {
     coords1 = this.start1 + ',0';
@@ -2257,8 +2293,10 @@ patch_obj.prototype.toString = function() {
 
 
 // Export these global variables so that they survive Google's JS compiler.
-window['diff_match_patch'] = diff_match_patch;
-window['patch_obj'] = patch_obj;
-window['DIFF_DELETE'] = DIFF_DELETE;
-window['DIFF_INSERT'] = DIFF_INSERT;
-window['DIFF_EQUAL'] = DIFF_EQUAL;
+// In a browser, 'this' will be 'window'.
+// Users of node.js should 'require' the uncompressed version since Google's
+// JS compiler may break the following exports for non-browser environments.
+this['diff_match_patch'] = diff_match_patch;
+this['DIFF_DELETE'] = DIFF_DELETE;
+this['DIFF_INSERT'] = DIFF_INSERT;
+this['DIFF_EQUAL'] = DIFF_EQUAL;

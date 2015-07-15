@@ -33,7 +33,6 @@ import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 /*
  * Functions for diff, match and patch.
  * Computes the difference between two texts to create a patch.
@@ -70,8 +69,8 @@ public class diff_match_patch {
    */
   public int Match_Distance = 1000;
   /**
-   * When deleting a large block of text (over ~64 characters), how close does
-   * the contents have to match the expected contents. (0.0 = perfection,
+   * When deleting a large block of text (over ~64 characters), how close do
+   * the contents have to be to match the expected contents. (0.0 = perfection,
    * 1.0 = very loose).  Note that Match_Threshold controls how closely the
    * end points of a delete need to match.
    */
@@ -116,7 +115,6 @@ public class diff_match_patch {
   public enum Operation {
     DELETE, INSERT, EQUAL
   }
-
 
   /**
    * Find the differences between two texts.
@@ -208,7 +206,6 @@ public class diff_match_patch {
     return diffs;
   }
 
-
   /**
    * Find the differences between two texts.  Assumes that the texts do not
    * have any common prefix or suffix.
@@ -256,7 +253,6 @@ public class diff_match_patch {
       diffs.add(new Diff(Operation.INSERT, text2));
       return diffs;
     }
-    longtext = shorttext = null;  // Garbage collect.
 
     // Check to see if the problem can be split in two.
     String[] hm = diff_halfMatch(text1, text2);
@@ -285,7 +281,7 @@ public class diff_match_patch {
 
     return diff_bisect(text1, text2, deadline);
   }
-  
+
   /**
    * Do a quick line-level diff on both strings, then rediff the parts for
    * greater accuracy.
@@ -356,7 +352,6 @@ public class diff_match_patch {
     return diffs;
   }
 
-
   /**
    * Find the 'middle snake' of a diff, split the problem in two
    * and return the recursively constructed diff.
@@ -402,7 +397,7 @@ public class diff_match_patch {
       for (int k1 = -d + k1start; k1 <= d - k1end; k1 += 2) {
         int k1_offset = v_offset + k1;
         int x1;
-        if (k1 == -d || k1 != d && v1[k1_offset - 1] < v1[k1_offset + 1]) {
+        if (k1 == -d || (k1 != d && v1[k1_offset - 1] < v1[k1_offset + 1])) {
           x1 = v1[k1_offset + 1];
         } else {
           x1 = v1[k1_offset - 1] + 1;
@@ -437,7 +432,7 @@ public class diff_match_patch {
       for (int k2 = -d + k2start; k2 <= d - k2end; k2 += 2) {
         int k2_offset = v_offset + k2;
         int x2;
-        if (k2 == -d || k2 != d && v2[k2_offset - 1] < v2[k2_offset + 1]) {
+        if (k2 == -d || (k2 != d && v2[k2_offset - 1] < v2[k2_offset + 1])) {
           x2 = v2[k2_offset + 1];
         } else {
           x2 = v2[k2_offset - 1] + 1;
@@ -479,7 +474,6 @@ public class diff_match_patch {
     return diffs;
   }
 
-
   /**
    * Given the location of the 'middle snake', split the diff in two parts
    * and recurse.
@@ -502,10 +496,9 @@ public class diff_match_patch {
     LinkedList<Diff> diffsb = diff_main(text1b, text2b, false, deadline);
 
     diffs.addAll(diffsb);
-    return diffs;  
+    return diffs;
   }
 
-  
   /**
    * Split two texts into a list of strings.  Reduce the texts to a string of
    * hashes where each Unicode character represents one line.
@@ -529,7 +522,6 @@ public class diff_match_patch {
     String chars2 = diff_linesToCharsMunge(text2, lineArray, lineHash);
     return new LinesToCharsResult(chars1, chars2, lineArray);
   }
-
 
   /**
    * Split a text into a list of strings.  Reduce the texts to a string of
@@ -567,7 +559,6 @@ public class diff_match_patch {
     return chars.toString();
   }
 
-
   /**
    * Rehydrate the text in a diff from a string of line hashes to real lines of
    * text.
@@ -586,7 +577,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Determine the common prefix of two strings
    * @param text1 First string.
@@ -603,7 +593,6 @@ public class diff_match_patch {
     }
     return n;
   }
-
 
   /**
    * Determine the common suffix of two strings
@@ -623,7 +612,6 @@ public class diff_match_patch {
     }
     return n;
   }
-
 
   /**
    * Determine if the suffix of one string is the prefix of another.
@@ -671,7 +659,6 @@ public class diff_match_patch {
       }
     }
   }
-
 
   /**
    * Do the two texts share a substring which is at least half the length of
@@ -721,7 +708,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Does a substring of shorttext exist within longtext such that the
    * substring is at least half the length of longtext?
@@ -761,7 +747,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Reduce the number of edits by eliminating semantically trivial equalities.
    * @param diffs LinkedList of Diff objects.
@@ -797,6 +782,8 @@ public class diff_match_patch {
         } else {
           length_deletions2 += thisDiff.text.length();
         }
+        // Eliminate an equality that is smaller or equal to the edits on both
+        // sides of it.
         if (lastequality != null && (lastequality.length()
             <= Math.max(length_insertions1, length_deletions1))
             && (lastequality.length()
@@ -849,8 +836,11 @@ public class diff_match_patch {
     diff_cleanupSemanticLossless(diffs);
 
     // Find any overlaps between deletions and insertions.
-    // e.g: <del>abcxx</del><ins>xxdef</ins>
-    //   -> <del>abc</del>xx<ins>def</ins>
+    // e.g: <del>abcxxx</del><ins>xxxdef</ins>
+    //   -> <del>abc</del>xxx<ins>def</ins>
+    // e.g: <del>xxxabc</del><ins>defxxx</ins>
+    //   -> <ins>def</ins>xxx<del>abc</del>
+    // Only extract an overlap if it is as big as the edit ahead or behind it.
     pointer = diffs.listIterator();
     Diff prevDiff = null;
     thisDiff = null;
@@ -865,17 +855,37 @@ public class diff_match_patch {
           thisDiff.operation == Operation.INSERT) {
         String deletion = prevDiff.text;
         String insertion = thisDiff.text;
-        int overlap_length = this.diff_commonOverlap(deletion, insertion);
-        if (overlap_length != 0) {
-          // Overlap found.  Insert an equality and trim the surrounding edits.
-          pointer.previous();
-          pointer.add(new Diff(Operation.EQUAL,
-                               insertion.substring(0, overlap_length)));
-          prevDiff.text =
-              deletion.substring(0, deletion.length() - overlap_length);
-          thisDiff.text = insertion.substring(overlap_length);
-          // pointer.add inserts the element before the cursor, so there is
-          // no need to step past the new element.
+        int overlap_length1 = this.diff_commonOverlap(deletion, insertion);
+        int overlap_length2 = this.diff_commonOverlap(insertion, deletion);
+        if (overlap_length1 >= overlap_length2) {
+          if (overlap_length1 >= deletion.length() / 2.0 ||
+              overlap_length1 >= insertion.length() / 2.0) {
+            // Overlap found. Insert an equality and trim the surrounding edits.
+            pointer.previous();
+            pointer.add(new Diff(Operation.EQUAL,
+                                 insertion.substring(0, overlap_length1)));
+            prevDiff.text =
+                deletion.substring(0, deletion.length() - overlap_length1);
+            thisDiff.text = insertion.substring(overlap_length1);
+            // pointer.add inserts the element before the cursor, so there is
+            // no need to step past the new element.
+          }
+        } else {
+          if (overlap_length2 >= deletion.length() / 2.0 ||
+              overlap_length2 >= insertion.length() / 2.0) {
+            // Reverse overlap found.
+            // Insert an equality and swap and trim the surrounding edits.
+            pointer.previous();
+            pointer.add(new Diff(Operation.EQUAL,
+                                 deletion.substring(0, overlap_length2)));
+            prevDiff.operation = Operation.INSERT;
+            prevDiff.text =
+              insertion.substring(0, insertion.length() - overlap_length2);
+            thisDiff.operation = Operation.DELETE;
+            thisDiff.text = deletion.substring(overlap_length2);
+            // pointer.add inserts the element before the cursor, so there is
+            // no need to step past the new element.
+          }
         }
         thisDiff = pointer.hasNext() ? pointer.next() : null;
       }
@@ -883,7 +893,6 @@ public class diff_match_patch {
       thisDiff = pointer.hasNext() ? pointer.next() : null;
     }
   }
-
 
   /**
    * Look for single edits surrounded on both sides by equalities
@@ -970,11 +979,10 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Given two strings, compute a score representing whether the internal
    * boundary falls on logical boundaries.
-   * Scores range from 5 (best) to 0 (worst).
+   * Scores range from 6 (best) to 0 (worst).
    * @param one First string.
    * @param two Second string.
    * @return The score.
@@ -982,7 +990,7 @@ public class diff_match_patch {
   private int diff_cleanupSemanticScore(String one, String two) {
     if (one.length() == 0 || two.length() == 0) {
       // Edges are the best.
-      return 5;
+      return 6;
     }
 
     // Each port of this function behaves slightly differently due to
@@ -990,36 +998,43 @@ public class diff_match_patch {
     // 'whitespace'.  Since this function's purpose is largely cosmetic,
     // the choice has been made to use each language's native features
     // rather than force total conformity.
-    int score = 0;
-    // One point for non-alphanumeric.
-    if (!Character.isLetterOrDigit(one.charAt(one.length() - 1))
-        || !Character.isLetterOrDigit(two.charAt(0))) {
-      score++;
+    char char1 = one.charAt(one.length() - 1);
+    char char2 = two.charAt(0);
+    boolean nonAlphaNumeric1 = !Character.isLetterOrDigit(char1);
+    boolean nonAlphaNumeric2 = !Character.isLetterOrDigit(char2);
+    boolean whitespace1 = nonAlphaNumeric1 && Character.isWhitespace(char1);
+    boolean whitespace2 = nonAlphaNumeric2 && Character.isWhitespace(char2);
+    boolean lineBreak1 = whitespace1
+        && Character.getType(char1) == Character.CONTROL;
+    boolean lineBreak2 = whitespace2
+        && Character.getType(char2) == Character.CONTROL;
+    boolean blankLine1 = lineBreak1 && BLANKLINEEND.matcher(one).find();
+    boolean blankLine2 = lineBreak2 && BLANKLINESTART.matcher(two).find();
+
+    if (blankLine1 || blankLine2) {
+      // Five points for blank lines.
+      return 5;
+    } else if (lineBreak1 || lineBreak2) {
+      // Four points for line breaks.
+      return 4;
+    } else if (nonAlphaNumeric1 && !whitespace1 && whitespace2) {
+      // Three points for end of sentences.
+      return 3;
+    } else if (whitespace1 || whitespace2) {
       // Two points for whitespace.
-      if (Character.isWhitespace(one.charAt(one.length() - 1))
-          || Character.isWhitespace(two.charAt(0))) {
-        score++;
-        // Three points for line breaks.
-        if (Character.getType(one.charAt(one.length() - 1)) == Character.CONTROL
-            || Character.getType(two.charAt(0)) == Character.CONTROL) {
-          score++;
-          // Four points for blank lines.
-          if (BLANKLINEEND.matcher(one).find()
-              || BLANKLINESTART.matcher(two).find()) {
-            score++;
-          }
-        }
-      }
+      return 2;
+    } else if (nonAlphaNumeric1 || nonAlphaNumeric2) {
+      // One point for non-alphanumeric.
+      return 1;
     }
-    return score;
+    return 0;
   }
 
-
+  // Define some regex patterns for matching boundaries.
   private Pattern BLANKLINEEND
       = Pattern.compile("\\n\\r?\\n\\Z", Pattern.DOTALL);
   private Pattern BLANKLINESTART
       = Pattern.compile("\\A\\r?\\n\\r?\\n", Pattern.DOTALL);
-
 
   /**
    * Reduce the number of edits by eliminating operationally trivial equalities.
@@ -1127,7 +1142,6 @@ public class diff_match_patch {
       diff_cleanupMerge(diffs);
     }
   }
-
 
   /**
    * Reorder and merge like edit sections.  Merge equalities.
@@ -1279,7 +1293,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * loc is a location in text1, compute and return the equivalent location in
    * text2.
@@ -1319,7 +1332,6 @@ public class diff_match_patch {
     return last_chars2 + (loc - last_chars1);
   }
 
-
   /**
    * Convert a Diff list into a pretty HTML report.
    * @param diffs LinkedList of Diff objects.
@@ -1327,7 +1339,6 @@ public class diff_match_patch {
    */
   public String diff_prettyHtml(LinkedList<Diff> diffs) {
     StringBuilder html = new StringBuilder();
-    int i = 0;
     for (Diff aDiff : diffs) {
       String text = aDiff.text.replace("&", "&amp;").replace("<", "&lt;")
           .replace(">", "&gt;").replace("\n", "&para;<br>");
@@ -1344,13 +1355,9 @@ public class diff_match_patch {
         html.append("<span>").append(text).append("</span>");
         break;
       }
-      if (aDiff.operation != Operation.DELETE) {
-        i += aDiff.text.length();
-      }
     }
     return html.toString();
   }
-
 
   /**
    * Compute and return the source text (all equalities and deletions).
@@ -1367,7 +1374,6 @@ public class diff_match_patch {
     return text.toString();
   }
 
-
   /**
    * Compute and return the destination text (all equalities and insertions).
    * @param diffs LinkedList of Diff objects.
@@ -1382,7 +1388,6 @@ public class diff_match_patch {
     }
     return text.toString();
   }
-
 
   /**
    * Compute the Levenshtein distance; the number of inserted, deleted or
@@ -1414,13 +1419,12 @@ public class diff_match_patch {
     return levenshtein;
   }
 
-
   /**
    * Crush the diff into an encoded string which describes the operations
    * required to transform text1 into text2.
    * E.g. =3\t-2\t+ing  -> Keep 3 chars, delete 2 chars, insert 'ing'.
    * Operations are tab-separated.  Inserted text is escaped using %xx notation.
-   * @param diffs Array of diff tuples.
+   * @param diffs Array of Diff objects.
    * @return Delta text.
    */
   public String diff_toDelta(LinkedList<Diff> diffs) {
@@ -1453,13 +1457,12 @@ public class diff_match_patch {
     return delta;
   }
 
-
   /**
    * Given the original text1, and an encoded string which describes the
    * operations required to transform text1 into text2, compute the full diff.
    * @param text1 Source string for the diff.
    * @param delta Delta text.
-   * @return Array of diff tuples or null if invalid.
+   * @return Array of Diff objects or null if invalid.
    * @throws IllegalArgumentException If invalid input.
    */
   public LinkedList<Diff> diff_fromDelta(String text1, String delta)
@@ -1567,7 +1570,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Locate the best instance of 'pattern' in 'text' near 'loc' using the
    * Bitap algorithm.  Returns -1 if no match found.
@@ -1641,7 +1643,7 @@ public class diff_match_patch {
           rd[j] = ((rd[j + 1] << 1) | 1) & charMatch;
         } else {
           // Subsequent passes: fuzzy match.
-          rd[j] = ((rd[j + 1] << 1) | 1) & charMatch
+          rd[j] = (((rd[j + 1] << 1) | 1) & charMatch)
               | (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1];
         }
         if ((rd[j] & matchmask) != 0) {
@@ -1671,7 +1673,6 @@ public class diff_match_patch {
     return best_loc;
   }
 
-
   /**
    * Compute and return the score for a match with e errors and x location.
    * @param e Number of errors in match.
@@ -1689,7 +1690,6 @@ public class diff_match_patch {
     }
     return accuracy + (proximity / (float) Match_Distance);
   }
-
 
   /**
    * Initialise the alphabet for the Bitap algorithm.
@@ -1759,7 +1759,6 @@ public class diff_match_patch {
     patch.length2 += prefix.length() + suffix.length();
   }
 
-
   /**
    * Compute a list of patches to turn text1 into text2.
    * A set of diffs will be computed.
@@ -1780,11 +1779,10 @@ public class diff_match_patch {
     return patch_make(text1, diffs);
   }
 
-
   /**
    * Compute a list of patches to turn text1 into text2.
    * text1 will be derived from the provided diffs.
-   * @param diffs Array of diff tuples for text1 to text2.
+   * @param diffs Array of Diff objects for text1 to text2.
    * @return LinkedList of Patch objects.
    */
   public LinkedList<Patch> patch_make(LinkedList<Diff> diffs) {
@@ -1796,13 +1794,12 @@ public class diff_match_patch {
     return patch_make(text1, diffs);
   }
 
-
   /**
    * Compute a list of patches to turn text1 into text2.
    * text2 is ignored, diffs are the delta between text1 and text2.
    * @param text1 Old text
    * @param text2 Ignored.
-   * @param diffs Array of diff tuples for text1 to text2.
+   * @param diffs Array of Diff objects for text1 to text2.
    * @return LinkedList of Patch objects.
    * @deprecated Prefer patch_make(String text1, LinkedList<Diff> diffs).
    */
@@ -1811,12 +1808,11 @@ public class diff_match_patch {
     return patch_make(text1, diffs);
   }
 
-
   /**
    * Compute a list of patches to turn text1 into text2.
    * text2 is not provided, diffs are the delta between text1 and text2.
    * @param text1 Old text.
-   * @param diffs Array of diff tuples for text1 to text2.
+   * @param diffs Array of Diff objects for text1 to text2.
    * @return LinkedList of Patch objects.
    */
   public LinkedList<Patch> patch_make(String text1, LinkedList<Diff> diffs) {
@@ -1899,11 +1895,10 @@ public class diff_match_patch {
     return patches;
   }
 
-
   /**
    * Given an array of patches, return another array that is identical.
-   * @param patches Array of patch objects.
-   * @return Array of patch objects.
+   * @param patches Array of Patch objects.
+   * @return Array of Patch objects.
    */
   public LinkedList<Patch> patch_deepCopy(LinkedList<Patch> patches) {
     LinkedList<Patch> patchesCopy = new LinkedList<Patch>();
@@ -1922,11 +1917,10 @@ public class diff_match_patch {
     return patchesCopy;
   }
 
-
   /**
    * Merge a set of patches onto the text.  Return a patched text, as well
    * as an array of true/false values indicating which patches were applied.
-   * @param patches Array of patch objects
+   * @param patches Array of Patch objects
    * @param text Old text.
    * @return Two element Object array, containing the new text and an array of
    *      boolean values.
@@ -2034,11 +2028,10 @@ public class diff_match_patch {
     return new Object[]{text, results};
   }
 
-
   /**
    * Add some padding on text start and end so that edges can match something.
    * Intended to be called only from within patch_apply.
-   * @param patches Array of patch objects.
+   * @param patches Array of Patch objects.
    * @return The padding string added to each side.
    */
   public String patch_addPadding(LinkedList<Patch> patches) {
@@ -2095,7 +2088,6 @@ public class diff_match_patch {
 
     return nullPadding;
   }
-
 
   /**
    * Look through the patches and break up any which are longer than the
@@ -2201,7 +2193,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Take a list of patches and return a textual representation.
    * @param patches List of Patch objects.
@@ -2214,7 +2205,6 @@ public class diff_match_patch {
     }
     return text.toString();
   }
-
 
   /**
    * Parse a textual representation of patches and return a List of Patch
@@ -2336,7 +2326,6 @@ public class diff_match_patch {
       this.text = text;
     }
 
-
     /**
      * Display a human-readable version of this Diff.
      * @return text version.
@@ -2346,19 +2335,47 @@ public class diff_match_patch {
       return "Diff(" + this.operation + ",\"" + prettyText + "\")";
     }
 
+    /**
+     * Create a numeric hash value for a Diff.
+     * This function is not used by DMP.
+     * @return Hash value.
+     */
+    @Override
+    public int hashCode() {
+      final int prime = 31;
+      int result = (operation == null) ? 0 : operation.hashCode();
+      result += prime * ((text == null) ? 0 : text.hashCode());
+      return result;
+    }
 
     /**
      * Is this Diff equivalent to another Diff?
-     * @param d Another Diff to compare against.
+     * @param obj Another Diff to compare against.
      * @return true or false.
      */
-    public boolean equals(Object d) {
-      try {
-        return (((Diff) d).operation == this.operation)
-               && (((Diff) d).text.equals(this.text));
-      } catch (ClassCastException e) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null) {
         return false;
       }
+      if (getClass() != obj.getClass()) {
+        return false;
+      }
+      Diff other = (Diff) obj;
+      if (operation != other.operation) {
+        return false;
+      }
+      if (text == null) {
+        if (other.text != null) {
+          return false;
+        }
+      } else if (!text.equals(other.text)) {
+        return false;
+      }
+      return true;
     }
   }
 
@@ -2373,14 +2390,12 @@ public class diff_match_patch {
     public int length1;
     public int length2;
 
-
     /**
      * Constructor.  Initializes with an empty list of diffs.
      */
     public Patch() {
       this.diffs = new LinkedList<Diff>();
     }
-
 
     /**
      * Emmulate GNU diff's format.
@@ -2432,7 +2447,6 @@ public class diff_match_patch {
     }
   }
 
-
   /**
    * Unescape selected chars for compatability with JavaScript's encodeURI.
    * In speed critical applications this could be dropped since the
@@ -2455,4 +2469,3 @@ public class diff_match_patch {
         .replace("%2C", ",").replace("%23", "#");
   }
 }
-

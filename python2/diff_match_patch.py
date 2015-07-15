@@ -1,5 +1,7 @@
 #!/usr/bin/python2.4
 
+from __future__ import division
+
 """Diff Match and Patch
 
 Copyright 2006 Google Inc.
@@ -27,10 +29,10 @@ Applies the patch onto another text, allowing for errors.
 __author__ = 'fraser@google.com (Neil Fraser)'
 
 import math
-import time
-import urllib
 import re
 import sys
+import time
+import urllib
 
 class diff_match_patch:
   """Class containing the diff, match and patch methods.
@@ -53,8 +55,8 @@ class diff_match_patch:
     # A match this many characters away from the expected location will add
     # 1.0 to the score (0.0 is a perfect match).
     self.Match_Distance = 1000
-    # When deleting a large block of text (over ~64 characters), how close does
-    # the contents have to match the expected contents. (0.0 = perfection,
+    # When deleting a large block of text (over ~64 characters), how close do
+    # the contents have to be to match the expected contents. (0.0 = perfection,
     # 1.0 = very loose).  Note that Match_Threshold controls how closely the
     # end points of a delete need to match.
     self.Patch_DeleteThreshold = 0.5
@@ -178,7 +180,6 @@ class diff_match_patch:
       # Single character string.
       # After the previous speedup, the character can't be an equality.
       return [(self.DIFF_DELETE, text1), (self.DIFF_INSERT, text2)]
-    longtext = shorttext = None  # Garbage collect.
 
     # Check to see if the problem can be split in two.
     hm = self.diff_halfMatch(text1, text2)
@@ -270,7 +271,7 @@ class diff_match_patch:
     # Cache the text lengths to prevent multiple calls.
     text1_length = len(text1)
     text2_length = len(text2)
-    max_d = (text1_length + text2_length + 1) / 2
+    max_d = (text1_length + text2_length + 1) // 2
     v_offset = max_d
     v_length = 2 * max_d
     v1 = [-1] * v_length
@@ -294,7 +295,7 @@ class diff_match_patch:
       # Walk the front path one step.
       for k1 in xrange(-d + k1start, d + 1 - k1end, 2):
         k1_offset = v_offset + k1
-        if (k1 == -d or k1 != d and
+        if k1 == -d or (k1 != d and
             v1[k1_offset - 1] < v1[k1_offset + 1]):
           x1 = v1[k1_offset + 1]
         else:
@@ -323,7 +324,7 @@ class diff_match_patch:
       # Walk the reverse path one step.
       for k2 in xrange(-d + k2start, d + 1 - k2end, 2):
         k2_offset = v_offset + k2
-        if (k2 == -d or k2 != d and
+        if k2 == -d or (k2 != d and
             v2[k2_offset - 1] < v2[k2_offset + 1]):
           x2 = v2[k2_offset + 1]
         else:
@@ -475,7 +476,7 @@ class diff_match_patch:
         pointerstart = pointermin
       else:
         pointermax = pointermid
-      pointermid = int((pointermax - pointermin) / 2 + pointermin)
+      pointermid = (pointermax - pointermin) // 2 + pointermin
     return pointermid
 
   def diff_commonSuffix(self, text1, text2):
@@ -504,7 +505,7 @@ class diff_match_patch:
         pointerend = pointermin
       else:
         pointermax = pointermid
-      pointermid = int((pointermax - pointermin) / 2 + pointermin)
+      pointermid = (pointermax - pointermin) // 2 + pointermin
     return pointermid
 
   def diff_commonOverlap(self, text1, text2):
@@ -588,7 +589,7 @@ class diff_match_patch:
         longtext, the prefix of shorttext, the suffix of shorttext and the
         common middle.  Or None if there was no match.
       """
-      seed = longtext[i:i + len(longtext) / 4]
+      seed = longtext[i:i + len(longtext) // 4]
       best_common = ''
       j = shorttext.find(seed)
       while j != -1:
@@ -610,9 +611,9 @@ class diff_match_patch:
         return None
 
     # First check if the second quarter is the seed for a half-match.
-    hm1 = diff_halfMatchI(longtext, shorttext, (len(longtext) + 3) / 4)
+    hm1 = diff_halfMatchI(longtext, shorttext, (len(longtext) + 3) // 4)
     # Check again based on the third quarter.
-    hm2 = diff_halfMatchI(longtext, shorttext, (len(longtext) + 1) / 2)
+    hm2 = diff_halfMatchI(longtext, shorttext, (len(longtext) + 1) // 2)
     if not hm1 and not hm2:
       return None
     elif not hm2:
@@ -642,7 +643,7 @@ class diff_match_patch:
     """
     changes = False
     equalities = []  # Stack of indices where equalities are found.
-    lastequality = None  # Always equal to equalities[-1][1]
+    lastequality = None  # Always equal to diffs[equalities[-1]][1]
     pointer = 0  # Index of current position.
     # Number of chars that changed prior to the equality.
     length_insertions1, length_deletions1 = 0, 0
@@ -659,7 +660,9 @@ class diff_match_patch:
           length_insertions2 += len(diffs[pointer][1])
         else:
           length_deletions2 += len(diffs[pointer][1])
-        if (lastequality != None and (len(lastequality) <=
+        # Eliminate an equality that is smaller or equal to the edits on both
+        # sides of it.
+        if (lastequality and (len(lastequality) <=
             max(length_insertions1, length_deletions1)) and
             (len(lastequality) <= max(length_insertions2, length_deletions2))):
           # Duplicate record.
@@ -689,22 +692,40 @@ class diff_match_patch:
     self.diff_cleanupSemanticLossless(diffs)
 
     # Find any overlaps between deletions and insertions.
-    # e.g: <del>abcxx</del><ins>xxdef</ins>
-    #   -> <del>abc</del>xx<ins>def</ins>
+    # e.g: <del>abcxxx</del><ins>xxxdef</ins>
+    #   -> <del>abc</del>xxx<ins>def</ins>
+    # e.g: <del>xxxabc</del><ins>defxxx</ins>
+    #   -> <ins>def</ins>xxx<del>abc</del>
+    # Only extract an overlap if it is as big as the edit ahead or behind it.
     pointer = 1
     while pointer < len(diffs):
       if (diffs[pointer - 1][0] == self.DIFF_DELETE and
           diffs[pointer][0] == self.DIFF_INSERT):
         deletion = diffs[pointer - 1][1]
         insertion = diffs[pointer][1]
-        overlap_length = self.diff_commonOverlap(deletion, insertion)
-        if overlap_length != 0:
-          # Overlap found.  Insert an equality and trim the surrounding edits.
-          diffs.insert(pointer, (self.DIFF_EQUAL, insertion[:overlap_length]))
-          diffs[pointer - 1] = (self.DIFF_DELETE,
-                                deletion[:len(deletion) - overlap_length])
-          diffs[pointer + 1] = (self.DIFF_INSERT, insertion[overlap_length:])
-          pointer += 1
+        overlap_length1 = self.diff_commonOverlap(deletion, insertion)
+        overlap_length2 = self.diff_commonOverlap(insertion, deletion)
+        if overlap_length1 >= overlap_length2:
+          if (overlap_length1 >= len(deletion) / 2.0 or
+              overlap_length1 >= len(insertion) / 2.0):
+            # Overlap found.  Insert an equality and trim the surrounding edits.
+            diffs.insert(pointer, (self.DIFF_EQUAL,
+                                   insertion[:overlap_length1]))
+            diffs[pointer - 1] = (self.DIFF_DELETE,
+                                  deletion[:len(deletion) - overlap_length1])
+            diffs[pointer + 1] = (self.DIFF_INSERT,
+                                  insertion[overlap_length1:])
+            pointer += 1
+        else:
+          if (overlap_length2 >= len(deletion) / 2.0 or
+              overlap_length2 >= len(insertion) / 2.0):
+            # Reverse overlap found.
+            # Insert an equality and swap and trim the surrounding edits.
+            diffs.insert(pointer, (self.DIFF_EQUAL, deletion[:overlap_length2]))
+            diffs[pointer - 1] = (self.DIFF_INSERT,
+                                  insertion[:len(insertion) - overlap_length2])
+            diffs[pointer + 1] = (self.DIFF_DELETE, deletion[overlap_length2:])
+            pointer += 1
         pointer += 1
       pointer += 1
 
@@ -720,7 +741,7 @@ class diff_match_patch:
     def diff_cleanupSemanticScore(one, two):
       """Given two strings, compute a score representing whether the
       internal boundary falls on logical boundaries.
-      Scores range from 5 (best) to 0 (worst).
+      Scores range from 6 (best) to 0 (worst).
       Closure, but does not reference any external variables.
 
       Args:
@@ -732,29 +753,40 @@ class diff_match_patch:
       """
       if not one or not two:
         # Edges are the best.
-        return 5
+        return 6
 
       # Each port of this function behaves slightly differently due to
       # subtle differences in each language's definition of things like
       # 'whitespace'.  Since this function's purpose is largely cosmetic,
       # the choice has been made to use each language's native features
       # rather than force total conformity.
-      score = 0
-      # One point for non-alphanumeric.
-      if not one[-1].isalnum() or not two[0].isalnum():
-        score += 1
+      char1 = one[-1]
+      char2 = two[0]
+      nonAlphaNumeric1 = not char1.isalnum()
+      nonAlphaNumeric2 = not char2.isalnum()
+      whitespace1 = nonAlphaNumeric1 and char1.isspace()
+      whitespace2 = nonAlphaNumeric2 and char2.isspace()
+      lineBreak1 = whitespace1 and (char1 == "\r" or char1 == "\n")
+      lineBreak2 = whitespace2 and (char2 == "\r" or char2 == "\n")
+      blankLine1 = lineBreak1 and self.BLANKLINEEND.search(one)
+      blankLine2 = lineBreak2 and self.BLANKLINESTART.match(two)
+
+      if blankLine1 or blankLine2:
+        # Five points for blank lines.
+        return 5
+      elif lineBreak1 or lineBreak2:
+        # Four points for line breaks.
+        return 4
+      elif nonAlphaNumeric1 and not whitespace1 and whitespace2:
+        # Three points for end of sentences.
+        return 3
+      elif whitespace1 or whitespace2:
         # Two points for whitespace.
-        if one[-1].isspace() or two[0].isspace():
-          score += 1
-          # Three points for line breaks.
-          if (one[-1] == "\r" or one[-1] == "\n" or
-              two[0] == "\r" or two[0] == "\n"):
-            score += 1
-            # Four points for blank lines.
-            if (re.search("\\n\\r?\\n$", one) or
-                re.match("^\\r?\\n\\r?\\n", two)):
-              score += 1
-      return score
+        return 2
+      elif nonAlphaNumeric1 or nonAlphaNumeric2:
+        # One point for non-alphanumeric.
+        return 1
+      return 0
 
     pointer = 1
     # Intentionally ignore the first and last element (don't need checking).
@@ -808,6 +840,10 @@ class diff_match_patch:
             pointer -= 1
       pointer += 1
 
+  # Define some regex patterns for matching boundaries.
+  BLANKLINEEND = re.compile(r"\n\r?\n$");
+  BLANKLINESTART = re.compile(r"^\r?\n\r?\n");
+
   def diff_cleanupEfficiency(self, diffs):
     """Reduce the number of edits by eliminating operationally trivial
     equalities.
@@ -817,7 +853,7 @@ class diff_match_patch:
     """
     changes = False
     equalities = []  # Stack of indices where equalities are found.
-    lastequality = ''  # Always equal to equalities[-1][1]
+    lastequality = None  # Always equal to diffs[equalities[-1]][1]
     pointer = 0  # Index of current position.
     pre_ins = False  # Is there an insertion operation before the last equality.
     pre_del = False  # Is there a deletion operation before the last equality.
@@ -835,7 +871,7 @@ class diff_match_patch:
         else:
           # Not a candidate, and can never become one.
           equalities = []
-          lastequality = ''
+          lastequality = None
 
         post_ins = post_del = False
       else:  # An insertion or deletion.
@@ -860,7 +896,7 @@ class diff_match_patch:
           diffs[equalities[-1] + 1] = (self.DIFF_INSERT,
               diffs[equalities[-1] + 1][1])
           equalities.pop()  # Throw away the equality we just deleted.
-          lastequality = ''
+          lastequality = None
           if pre_ins and pre_del:
             # No changes made which could affect previous entry, keep going.
             post_ins = post_del = True
@@ -1032,7 +1068,6 @@ class diff_match_patch:
       HTML representation.
     """
     html = []
-    i = 0
     for (op, data) in diffs:
       text = (data.replace("&", "&amp;").replace("<", "&lt;")
                  .replace(">", "&gt;").replace("\n", "&para;<br>"))
@@ -1042,8 +1077,6 @@ class diff_match_patch:
         html.append("<del style=\"background:#ffe6e6;\">%s</del>" % text)
       elif op == self.DIFF_EQUAL:
         html.append("<span>%s</span>" % text)
-      if op != self.DIFF_DELETE:
-        i += len(data)
     return "".join(html)
 
   def diff_text1(self, diffs):
@@ -1278,15 +1311,15 @@ class diff_match_patch:
           bin_min = bin_mid
         else:
           bin_max = bin_mid
-        bin_mid = (bin_max - bin_min) / 2 + bin_min
+        bin_mid = (bin_max - bin_min) // 2 + bin_min
 
       # Use the result from this iteration as the maximum for the next.
       bin_max = bin_mid
       start = max(1, loc - bin_mid + 1)
       finish = min(loc + bin_mid, len(text)) + len(pattern)
 
-      rd = range(finish + 1)
-      rd.append((1 << d) - 1)
+      rd = [0] * (finish + 2)
+      rd[finish + 1] = (1 << d) - 1
       for j in xrange(finish, start - 1, -1):
         if len(text) <= j - 1:
           # Out of range.
@@ -1296,7 +1329,7 @@ class diff_match_patch:
         if d == 0:  # First pass: exact match.
           rd[j] = ((rd[j + 1] << 1) | 1) & charMatch
         else:  # Subsequent passes: fuzzy match.
-          rd[j] = ((rd[j + 1] << 1) | 1) & charMatch | (
+          rd[j] = (((rd[j + 1] << 1) | 1) & charMatch) | (
               ((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1]
         if rd[j] & matchmask:
           score = match_bitapScore(d, j - 1)
@@ -1400,7 +1433,7 @@ class diff_match_patch:
           undefined (methods 1,2,3).
 
     Returns:
-      Array of patch objects.
+      Array of Patch objects.
     """
     text1 = None
     diffs = None
@@ -1495,10 +1528,10 @@ class diff_match_patch:
     """Given an array of patches, return another array that is identical.
 
     Args:
-      patches: Array of patch objects.
+      patches: Array of Patch objects.
 
     Returns:
-      Array of patch objects.
+      Array of Patch objects.
     """
     patchesCopy = []
     for patch in patches:
@@ -1517,7 +1550,7 @@ class diff_match_patch:
     as a list of true/false values indicating which patches were applied.
 
     Args:
-      patches: Array of patch objects.
+      patches: Array of Patch objects.
       text: Old text.
 
     Returns:
@@ -1605,7 +1638,7 @@ class diff_match_patch:
     something.  Intended to be called only from within patch_apply.
 
     Args:
-      patches: Array of patch objects.
+      patches: Array of Patch objects.
 
     Returns:
       The padding string added to each side.
@@ -1664,7 +1697,7 @@ class diff_match_patch:
     Intended to be called only from within patch_apply.
 
     Args:
-      patches: Array of patch objects.
+      patches: Array of Patch objects.
     """
     patch_size = self.Match_MaxBits
     if patch_size == 0:
@@ -1672,84 +1705,85 @@ class diff_match_patch:
       # to handle integers of arbitrary precision.
       return
     for x in xrange(len(patches)):
-      if patches[x].length1 > patch_size:
-        bigpatch = patches[x]
-        # Remove the big old patch.
-        del patches[x]
-        x -= 1
-        start1 = bigpatch.start1
-        start2 = bigpatch.start2
-        precontext = ''
-        while len(bigpatch.diffs) != 0:
-          # Create one of several smaller patches.
-          patch = patch_obj()
-          empty = True
-          patch.start1 = start1 - len(precontext)
-          patch.start2 = start2 - len(precontext)
-          if precontext:
-            patch.length1 = patch.length2 = len(precontext)
-            patch.diffs.append((self.DIFF_EQUAL, precontext))
+      if patches[x].length1 <= patch_size:
+        continue
+      bigpatch = patches[x]
+      # Remove the big old patch.
+      del patches[x]
+      x -= 1
+      start1 = bigpatch.start1
+      start2 = bigpatch.start2
+      precontext = ''
+      while len(bigpatch.diffs) != 0:
+        # Create one of several smaller patches.
+        patch = patch_obj()
+        empty = True
+        patch.start1 = start1 - len(precontext)
+        patch.start2 = start2 - len(precontext)
+        if precontext:
+          patch.length1 = patch.length2 = len(precontext)
+          patch.diffs.append((self.DIFF_EQUAL, precontext))
 
-          while (len(bigpatch.diffs) != 0 and
-                 patch.length1 < patch_size - self.Patch_Margin):
-            (diff_type, diff_text) = bigpatch.diffs[0]
-            if diff_type == self.DIFF_INSERT:
-              # Insertions are harmless.
+        while (len(bigpatch.diffs) != 0 and
+               patch.length1 < patch_size - self.Patch_Margin):
+          (diff_type, diff_text) = bigpatch.diffs[0]
+          if diff_type == self.DIFF_INSERT:
+            # Insertions are harmless.
+            patch.length2 += len(diff_text)
+            start2 += len(diff_text)
+            patch.diffs.append(bigpatch.diffs.pop(0))
+            empty = False
+          elif (diff_type == self.DIFF_DELETE and len(patch.diffs) == 1 and
+              patch.diffs[0][0] == self.DIFF_EQUAL and
+              len(diff_text) > 2 * patch_size):
+            # This is a large deletion.  Let it pass in one chunk.
+            patch.length1 += len(diff_text)
+            start1 += len(diff_text)
+            empty = False
+            patch.diffs.append((diff_type, diff_text))
+            del bigpatch.diffs[0]
+          else:
+            # Deletion or equality.  Only take as much as we can stomach.
+            diff_text = diff_text[:patch_size - patch.length1 -
+                                  self.Patch_Margin]
+            patch.length1 += len(diff_text)
+            start1 += len(diff_text)
+            if diff_type == self.DIFF_EQUAL:
               patch.length2 += len(diff_text)
               start2 += len(diff_text)
-              patch.diffs.append(bigpatch.diffs.pop(0))
+            else:
               empty = False
-            elif (diff_type == self.DIFF_DELETE and len(patch.diffs) == 1 and
-                patch.diffs[0][0] == self.DIFF_EQUAL and
-                len(diff_text) > 2 * patch_size):
-              # This is a large deletion.  Let it pass in one chunk.
-              patch.length1 += len(diff_text)
-              start1 += len(diff_text)
-              empty = False
-              patch.diffs.append((diff_type, diff_text))
+
+            patch.diffs.append((diff_type, diff_text))
+            if diff_text == bigpatch.diffs[0][1]:
               del bigpatch.diffs[0]
             else:
-              # Deletion or equality.  Only take as much as we can stomach.
-              diff_text = diff_text[:patch_size - patch.length1 -
-                                    self.Patch_Margin]
-              patch.length1 += len(diff_text)
-              start1 += len(diff_text)
-              if diff_type == self.DIFF_EQUAL:
-                patch.length2 += len(diff_text)
-                start2 += len(diff_text)
-              else:
-                empty = False
+              bigpatch.diffs[0] = (bigpatch.diffs[0][0],
+                                   bigpatch.diffs[0][1][len(diff_text):])
 
-              patch.diffs.append((diff_type, diff_text))
-              if diff_text == bigpatch.diffs[0][1]:
-                del bigpatch.diffs[0]
-              else:
-                bigpatch.diffs[0] = (bigpatch.diffs[0][0],
-                                     bigpatch.diffs[0][1][len(diff_text):])
+        # Compute the head context for the next patch.
+        precontext = self.diff_text2(patch.diffs)
+        precontext = precontext[-self.Patch_Margin:]
+        # Append the end context for this patch.
+        postcontext = self.diff_text1(bigpatch.diffs)[:self.Patch_Margin]
+        if postcontext:
+          patch.length1 += len(postcontext)
+          patch.length2 += len(postcontext)
+          if len(patch.diffs) != 0 and patch.diffs[-1][0] == self.DIFF_EQUAL:
+            patch.diffs[-1] = (self.DIFF_EQUAL, patch.diffs[-1][1] +
+                               postcontext)
+          else:
+            patch.diffs.append((self.DIFF_EQUAL, postcontext))
 
-          # Compute the head context for the next patch.
-          precontext = self.diff_text2(patch.diffs)
-          precontext = precontext[-self.Patch_Margin:]
-          # Append the end context for this patch.
-          postcontext = self.diff_text1(bigpatch.diffs)[:self.Patch_Margin]
-          if postcontext:
-            patch.length1 += len(postcontext)
-            patch.length2 += len(postcontext)
-            if len(patch.diffs) != 0 and patch.diffs[-1][0] == self.DIFF_EQUAL:
-              patch.diffs[-1] = (self.DIFF_EQUAL, patch.diffs[-1][1] +
-                                 postcontext)
-            else:
-              patch.diffs.append((self.DIFF_EQUAL, postcontext))
-
-          if not empty:
-            x += 1
-            patches.insert(x, patch)
+        if not empty:
+          x += 1
+          patches.insert(x, patch)
 
   def patch_toText(self, patches):
     """Take a list of patches and return a textual representation.
 
     Args:
-      patches: Array of patch objects.
+      patches: Array of Patch objects.
 
     Returns:
       Text representation of patches.
@@ -1767,7 +1801,7 @@ class diff_match_patch:
       textline: Text representation of patches.
 
     Returns:
-      Array of patch objects.
+      Array of Patch objects.
 
     Raises:
       ValueError: If invalid input.

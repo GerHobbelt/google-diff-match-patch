@@ -4,8 +4,8 @@
 * Copyright 2006 Google Inc.
 * http://code.google.com/p/google-diff-match-patch/
 *
-* Based on the JavaScript implementation by Neil Fraser
-* Ported to Lua by Duncan Cross
+* Based on the JavaScript implementation by Neil Fraser.
+* Ported to Lua by Duncan Cross.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,10 +20,16 @@
 * limitations under the License.
 --]]
 
+--[[
+-- Lua 5.1 and earlier requires the external BitOp library.
+-- This library is built-in from Lua 5.2 and later as 'bit32'.
 require 'bit'   -- <http://bitop.luajit.org/>
-
 local band, bor, lshift
     = bit.band, bit.bor, bit.lshift
+--]]
+
+local band, bor, lshift
+    = bit32.band, bit32.bor, bit32.lshift
 local type, setmetatable, ipairs, select
     = type, setmetatable, ipairs, select
 local unpack, tonumber, error
@@ -37,12 +43,9 @@ local tinsert, tremove, tconcat
 local max, min, floor, ceil, abs
     = math.max, math.min, math.floor, math.ceil, math.abs
 local clock = os.clock
-local print = print
-
-module 'diff_match_patch'
 
 
--- Utility functions
+-- Utility functions.
 
 local percentEncode_pattern = '[^A-Za-z0-9%-=;\',./~!@#$%&*%(%)_%+ %?]'
 local function percentEncode_replace(v)
@@ -60,46 +63,8 @@ local function tsplice(t, idx, deletions, ...)
   end
 end
 
-local function tsub(t, i, j)
-  if (i < 0) then
-    local sz = #t
-    i = sz + 1 + i
-    if j and (j < 0) then
-      j = sz + 1 + j
-    end
-  elseif j and (j < 0) then
-    j = #t + 1 + j
-  end
-  return {unpack(t, i, j)}
-end
-
 local function strelement(str, i)
   return strsub(str, i, i)
-end
-
-local function telement(t, i)
-  if (i < 0) then
-    i = #t + 1 + i
-  end
-  return t[i]
-end
-
-local function tprepend(t, v)
-  tinsert(t, 1, v)
-  return t
-end
-
-local function tappend(t, v)
-  t[#t + 1] = v
-  return t
-end
-
-local function strappend(str, v)
-  return str .. v
-end
-
-local function strprepend(str, v)
-  return v .. str
 end
 
 local function indexOf(a, b, start)
@@ -149,8 +114,8 @@ local Match_Threshold = 0.5
 -- A match this many characters away from the expected location will add
 -- 1.0 to the score (0.0 is a perfect match).
 local Match_Distance = 1000
--- When deleting a large block of text (over ~64 characters), how close does
--- the contents have to match the expected contents. (0.0 = perfection,
+-- When deleting a large block of text (over ~64 characters), how close do
+-- the contents have to be to match the expected contents. (0.0 = perfection,
 -- 1.0 = very loose).  Note that Match_Threshold controls how closely the
 -- end points of a delete need to match.
 local Patch_DeleteThreshold = 0.5
@@ -200,18 +165,14 @@ local _diff_compute,
       _diff_text1,
       _diff_text2,
       _diff_toDelta,
-      _diff_fromDelta,
-      _diff_toLines,
-      _diff_fromLines
+      _diff_fromDelta
 
 --[[
 * Find the differences between two texts.  Simplifies the problem by stripping
 * any common prefix or suffix off the texts before diffing.
 * @param {string} text1 Old string to be diffed.
 * @param {string} text2 New string to be diffed.
-* @param {boolean} opt_checklines Optional speedup flag.  If present and false,
-*    then don't run a line-level diff first to identify the changed areas.
-*    Defaults to true, which does a faster, slightly less optimal diff
+* @param {boolean} opt_checklines Has no effect in Lua.
 * @param {number} opt_deadline Optional time when the diff should be complete
 *     by.  Used internally for recursive calls.  Users should set DiffTimeout
 *     instead.
@@ -241,10 +202,9 @@ function diff_main(text1, text2, opt_checklines, opt_deadline)
     return {}
   end
 
-  if opt_checklines == nil then
-    opt_checklines = true
-  end
-  local checklines = opt_checklines
+  -- LUANOTE: Due to the lack of Unicode support, Lua is incapable of
+  -- implementing the line-mode speedup.
+  local checklines = false
 
   -- Trim off common prefix (speedup).
   local commonlength = _diff_commonPrefix(text1, text2)
@@ -287,7 +247,8 @@ function diff_cleanupSemantic(diffs)
   local changes = false
   local equalities = {}  -- Stack of indices where equalities are found.
   local equalitiesLength = 0  -- Keeping our own length var is faster.
-  local lastequality = nil  -- Always equal to equalities[equalitiesLength][2]
+  local lastequality = nil
+  -- Always equal to diffs[equalities[equalitiesLength]][2]
   local pointer = 1  -- Index of current position.
   -- Number of characters that changed prior to the equality.
   local length_insertions1 = 0
@@ -311,9 +272,11 @@ function diff_cleanupSemantic(diffs)
       else
         length_deletions2 = length_deletions2 + #(diffs[pointer][2])
       end
+      -- Eliminate an equality that is smaller or equal to the edits on both
+      -- sides of it.
       if lastequality
-         and (#lastequality <= max(length_insertions1, length_deletions1))
-         and (#lastequality <= max(length_insertions2, length_deletions2)) then
+          and (#lastequality <= max(length_insertions1, length_deletions1))
+          and (#lastequality <= max(length_insertions2, length_deletions2)) then
         -- Duplicate record.
         tinsert(diffs, equalities[equalitiesLength],
          {DIFF_DELETE, lastequality})
@@ -340,23 +303,43 @@ function diff_cleanupSemantic(diffs)
   _diff_cleanupSemanticLossless(diffs)
 
   -- Find any overlaps between deletions and insertions.
-  -- e.g: <del>abcxx</del><ins>xxdef</ins>
-  --   -> <del>abc</del>xx<ins>def</ins>
+  -- e.g: <del>abcxxx</del><ins>xxxdef</ins>
+  --   -> <del>abc</del>xxx<ins>def</ins>
+  -- e.g: <del>xxxabc</del><ins>defxxx</ins>
+  --   -> <ins>def</ins>xxx<del>abc</del>
+  -- Only extract an overlap if it is as big as the edit ahead or behind it.
   pointer = 2
-  while (diffs[pointer]) do
+  while diffs[pointer] do
     if (diffs[pointer - 1][1] == DIFF_DELETE and
         diffs[pointer][1] == DIFF_INSERT) then
       local deletion = diffs[pointer - 1][2]
       local insertion = diffs[pointer][2]
-      local overlap_length = _diff_commonOverlap(deletion, insertion)
-      if overlap_length > 0 then
-        -- Overlap found.  Insert an equality and trim the surrounding edits.
-        tinsert(diffs, pointer,
-            {DIFF_EQUAL, strsub(insertion, 1, overlap_length)})
-        diffs[pointer - 1][2] =
-            strsub(deletion, 1, #deletion - overlap_length)
-        diffs[pointer + 1][2] = strsub(insertion, overlap_length + 1)
-        pointer = pointer + 1
+      local overlap_length1 = _diff_commonOverlap(deletion, insertion)
+      local overlap_length2 = _diff_commonOverlap(insertion, deletion)
+      if (overlap_length1 >= overlap_length2) then
+        if (overlap_length1 >= #deletion / 2 or
+            overlap_length1 >= #insertion / 2) then
+          -- Overlap found.  Insert an equality and trim the surrounding edits.
+          tinsert(diffs, pointer,
+              {DIFF_EQUAL, strsub(insertion, 1, overlap_length1)})
+          diffs[pointer - 1][2] =
+              strsub(deletion, 1, #deletion - overlap_length1)
+          diffs[pointer + 1][2] = strsub(insertion, overlap_length1 + 1)
+          pointer = pointer + 1
+        end
+      else
+        if (overlap_length2 >= #deletion / 2 or
+            overlap_length2 >= #insertion / 2) then
+          -- Reverse overlap found.
+          -- Insert an equality and swap and trim the surrounding edits.
+          tinsert(diffs, pointer,
+              {DIFF_EQUAL, strsub(deletion, 1, overlap_length2)})
+          diffs[pointer - 1] = {DIFF_INSERT,
+              strsub(insertion, 1, #insertion - overlap_length2)}
+          diffs[pointer + 1] = {DIFF_DELETE,
+              strsub(deletion, overlap_length2 + 1)}
+          pointer = pointer + 1
+        end
       end
       pointer = pointer + 1
     end
@@ -375,7 +358,7 @@ function diff_cleanupEfficiency(diffs)
   -- Keeping our own length var is faster.
   local equalitiesLength = 0
   -- Always equal to diffs[equalities[equalitiesLength]][2]
-  local lastequality = ''
+  local lastequality = nil
   -- Index of current position.
   local pointer = 1
 
@@ -407,7 +390,7 @@ function diff_cleanupEfficiency(diffs)
       else
         -- Not a candidate, and can never become one.
         equalitiesLength = 0
-        lastequality = ''
+        lastequality = nil
       end
       post_ins, post_del = 0, 0
     else  -- An insertion or deletion.
@@ -424,7 +407,7 @@ function diff_cleanupEfficiency(diffs)
       * <ins>A</del>X<ins>C</ins><del>D</del>
       * <ins>A</ins><del>B</del>X<del>C</del>
       --]]
-      if (#lastequality > 0) and (
+      if lastequality and (
           (pre_ins+pre_del+post_ins+post_del == 4)
           or
           (
@@ -439,7 +422,7 @@ function diff_cleanupEfficiency(diffs)
         diffs[equalities[equalitiesLength] + 1][1] = DIFF_INSERT
         -- Throw away the equality we just deleted.
         equalitiesLength = equalitiesLength - 1
-        lastequality = ''
+        lastequality = nil
         if (pre_ins == 1) and (pre_del == 1) then
           -- No changes made which could affect previous entry, keep going.
           post_ins, post_del = 1, 1
@@ -494,7 +477,6 @@ end
 --]]
 function diff_prettyHtml(diffs)
   local html = {}
-  local i = 0
   for x, diff in ipairs(diffs) do
     local op = diff[1]   -- Operation (insert, delete, equal)
     local data = diff[2]  -- Text of change.
@@ -505,9 +487,6 @@ function diff_prettyHtml(diffs)
       html[x] = '<del style="background:#ffe6e6;">' .. text .. '</del>'
     elseif op == DIFF_EQUAL then
       html[x] = '<span>' .. text .. '</span>'
-    end
-    if op ~= DIFF_DELETE then
-      i = i + #data
     end
   end
   return tconcat(html)
@@ -522,9 +501,7 @@ end
 * have any common prefix or suffix.
 * @param {string} text1 Old string to be diffed.
 * @param {string} text2 New string to be diffed.
-* @param {boolean} checklines Speedup flag.  If false, then don't run a
-*    line-level diff first to identify the changed areas.
-*    If true, then run a faster, slightly less optimal diff
+* @param {boolean} checklines Has no effect in Lua.
 * @param {number} deadline Time when the diff should be complete by.
 * @return {Array.<Array.<number|string>>} Array of diff tuples.
 * @private
@@ -565,7 +542,6 @@ function _diff_compute(text1, text2, checklines, deadline)
     -- After the previous speedup, the character can't be an equality.
     return {{DIFF_DELETE, text1}, {DIFF_INSERT, text2}}
   end
-  longtext, shorttext = nil, nil  -- Garbage collect.
 
   -- Check to see if the problem can be split in two.
   do
@@ -590,77 +566,7 @@ function _diff_compute(text1, text2, checklines, deadline)
     end
   end
 
-  -- LUANOTE: Until Unicode is supported by Lua efficiently, the line-mode
-  -- speedup is impractical.
-  checklines = false
-  if checklines and #text1 > 100 and #text2 > 100 then
-    return _diff_lineMode(text1, text2, deadline)
-  end
-
   return _diff_bisect(text1, text2, deadline)
-end
-
---[[
-* Do a quick line-level diff on both strings, then rediff the parts for
-* greater accuracy.
-* This speedup can produce non-minimal diffs.
-* @param {string} text1 Old string to be diffed.
-* @param {string} text2 New string to be diffed.
-* @param {number} deadline Time when the diff should be complete by.
-* @return {Array.<Array.<number|string>>} Array of diff tuples.
-* @private
---]]
-function _diff_lineMode(text1, text2, deadline)
-  local linearray
-  -- Scan the text on a line-by-line basis first.
-  text1, text2, linearray = _diff_toLines(text1, text2)
-
-  local diffs = _diff_main(text1, text2, false, deadline)
-
-  -- Convert the diff back to original text.
-  _diff_fromLines(diffs, linearray)
-  -- Eliminate freak matches (e.g. blank lines)
-  diff_cleanupSemantic(diffs)
-  -- Rediff any replacement blocks, this time character-by-character.
-  -- Add a dummy entry at the end.
-  diffs[#diffs + 1] = {DIFF_EQUAL, ''}
-  local pointer = 1
-  local count_delete = 0
-  local count_insert = 0
-  local text_delete = ''
-  local text_insert = ''
-  while (pointer <= #diffs) do
-    local diff_type = diffs[pointer][1]
-    if (diff_type == DIFF_INSERT) then
-      count_insert = count_insert + 1
-      text_insert = text_insert .. diffs[pointer][2]
-    elseif (diff_type == DIFF_DELETE) then
-      count_delete = count_delete + 1
-      text_delete = text_delete .. diffs[pointer][2]
-    elseif (diff_type == DIFF_EQUAL) then
-      -- Upon reaching an equality, check for prior redundancies.
-      if (count_delete >= 1) and (count_insert >= 1) then
-        -- Delete the offending records and add the merged ones.
-        local a = diff_main(text_delete, text_insert, false, deadline)
-        pointer = pointer - count_delete - count_insert
-        for i = 1, count_delete + count_insert do
-          tremove(diffs, pointer)
-        end
-        for j = #a, 1, -1 do
-          tinsert(diffs, pointer, a[j])
-        end
-        pointer = pointer + #a
-      end
-      count_insert = 0
-      count_delete = 0
-      text_delete = ''
-      text_insert = ''
-    end
-    pointer = pointer + 1
-  end
-  diffs[#diffs] = nil  -- Remove the dummy entry at the end.
-
-  return diffs
 end
 
 --[[
@@ -811,79 +717,6 @@ function _diff_bisectSplit(text1, text2, x, y, deadline)
     diffs[diffs_len + i] = v
   end
   return diffs
-end
-
-
---[[
-* Split two texts into an array of strings.  Reduce the texts to an array of
-* pointers where each integer represents one line.
-* @param {string} text1 First string.
-* @param {string} text2 Second string.
-* @return {Array.<Array.<number>|Array.<string>>} Three element Array,
-*     containing the encoded text1, the encoded text2 and the array of
-*     unique strings.
-* @private
---]]
-function _diff_toLines(text1, text2)
-  local lineArray = {}  -- e.g. lineArray[4] == 'Hello\n'
-  local lineHash = {}   -- e.g. lineHash['Hello\n'] == 4
-
-  --[[
-  * Split a text into an array of strings.  Reduce the texts to an array of
-  * pointers where each integer represents one line.
-  * Modifies linearray and linehash through being a closure.
-  * @param {string} text String to encode.
-  * @return {Array.<number>} Encoded string.
-  * @private
-  --]]
-  local _diff_toLinesMunge = function(text)
-    local lines = {}
-    -- Walk the text, pulling out a substring for each line.
-    -- text.split('\n') would would temporarily double our memory footprint.
-    -- Modifying text would create many large strings to garbage collect.
-    local lineStart = 1
-    local lineEnd = 0
-    -- Keeping our own length variable is faster than looking it up.
-    local lineArrayLength = #lineArray
-    while (lineEnd < #text) do
-      lineEnd = indexOf(text, '\n', lineStart) or #text
-      local line = strsub(text, lineStart, lineEnd)
-      lineStart = lineEnd + 1
-
-      local hash = lineHash[line]
-      if hash then
-        lines[#lines + 1] = hash
-      else
-        lineArrayLength = lineArrayLength + 1
-        lines[#lines + 1] = lineArrayLength
-        lineHash[line] = lineArrayLength
-        lineArray[lineArrayLength] = line
-      end
-    end
-    return lines
-  end
-
-  local lines1 = _diff_toLinesMunge(text1)
-  local lines2 = _diff_toLinesMunge(text2)
-  return lines1, lines2, lineArray
-end
-
---[[
-* Rehydrate the text in a diff from a string of line hashes to real lines of
-* text.
-* @param {Array.<Array.<number|string>>} diffs Array of diff tuples.
-* @param {Array.<string>} lineArray Array of unique strings.
-* @private
---]]
-function _diff_fromLines(diffs, lineArray)
-  for x, diff in ipairs(diffs) do
-    local lines = diff[2]
-    local text = {}
-    for idx, line in ipairs(lines) do
-      text[idx] = lineArray[line]
-    end
-    diff[2] = tconcat(text)
-  end
 end
 
 --[[
@@ -1092,18 +925,10 @@ function _diff_halfMatch(text1, text2)
   return text1_a, text1_b, text2_a, text2_b, mid_common
 end
 
--- Define some string matching patterns for matching boundaries.
-local punctuation = '^[^a-zA-Z0-9]'
-local whitespace = '^%s'
-local linebreak = '^[\r\n]'
-local blanklineEnd = '\n\r?\n$'
-local blanklineStart = '^\r?\n\r?\n'
-
 --[[
 * Given two strings, compute a score representing whether the internal
 * boundary falls on logical boundaries.
-* Scores range from 5 (best) to 0 (worst).
-* Closure, makes reference to regex patterns defined above.
+* Scores range from 6 (best) to 0 (worst).
 * @param {string} one First string.
 * @param {string} two Second string.
 * @return {number} The score.
@@ -1112,7 +937,7 @@ local blanklineStart = '^\r?\n\r?\n'
 function _diff_cleanupSemanticScore(one, two)
   if (#one == 0) or (#two == 0) then
     -- Edges are the best.
-    return 5
+    return 6
   end
 
   -- Each port of this function behaves slightly differently due to
@@ -1120,25 +945,34 @@ function _diff_cleanupSemanticScore(one, two)
   -- 'whitespace'.  Since this function's purpose is largely cosmetic,
   -- the choice has been made to use each language's native features
   -- rather than force total conformity.
-  local score = 0
-  -- One point for non-alphanumeric.
-  if strmatch(one, punctuation, -1) or strmatch(two, punctuation) then
-    score = score + 1
+  local char1 = strsub(one, -1)
+  local char2 = strsub(two, 1, 1)
+  local nonAlphaNumeric1 = strmatch(char1, '%W')
+  local nonAlphaNumeric2 = strmatch(char2, '%W')
+  local whitespace1 = nonAlphaNumeric1 and strmatch(char1, '%s')
+  local whitespace2 = nonAlphaNumeric2 and strmatch(char2, '%s')
+  local lineBreak1 = whitespace1 and strmatch(char1, '%c')
+  local lineBreak2 = whitespace2 and strmatch(char2, '%c')
+  local blankLine1 = lineBreak1 and strmatch(one, '\n\r?\n$')
+  local blankLine2 = lineBreak2 and strmatch(two, '^\r?\n\r?\n')
+
+  if blankLine1 or blankLine2 then
+    -- Five points for blank lines.
+    return 5
+  elseif lineBreak1 or lineBreak2 then
+    -- Four points for line breaks.
+    return 4
+  elseif nonAlphaNumeric1 and not whitespace1 and whitespace2 then
+    -- Three points for end of sentences.
+    return 3
+  elseif whitespace1 or whitespace2 then
     -- Two points for whitespace.
-    if strmatch(one, whitespace, -1) or strmatch(two, whitespace) then
-      score = score + 1
-      -- Three points for line breaks.
-      if strmatch(one, linebreak, -1) or strmatch(two, linebreak) then
-        score = score + 1
-        -- Four points for blank lines.
-        if strmatch(strsub(one, -3), blanklineEnd)
-            or strmatch(two, blanklineStart) then
-          score = score + 1
-        end
-      end
-    end
+    return 2
+  elseif nonAlphaNumeric1 or nonAlphaNumeric2 then
+    -- One point for non-alphanumeric.
+    return 1
   end
-  return score
+  return 0
 end
 
 --[[
@@ -2320,6 +2154,8 @@ function _patch_appendText(patch, text)
 end
 
 -- Expose the API
+local _M = {}
+
 _M.DIFF_DELETE = DIFF_DELETE
 _M.DIFF_INSERT = DIFF_INSERT
 _M.DIFF_EQUAL = DIFF_EQUAL
@@ -2342,8 +2178,6 @@ _M.diff_commonPrefix = _diff_commonPrefix
 _M.diff_commonSuffix = _diff_commonSuffix
 _M.diff_commonOverlap = _diff_commonOverlap
 _M.diff_halfMatch = _diff_halfMatch
-_M.diff_toLines = _diff_toLines
-_M.diff_fromLines = _diff_fromLines
 _M.diff_bisect = _diff_bisect
 _M.diff_cleanupMerge = _diff_cleanupMerge
 _M.diff_cleanupSemanticLossless = _diff_cleanupSemanticLossless
@@ -2358,3 +2192,6 @@ _M.new_patch_obj = _new_patch_obj
 _M.patch_addContext = _patch_addContext
 _M.patch_splitMax = _patch_splitMax
 _M.patch_addPadding = _patch_addPadding
+_M.settings = settings
+
+return _M

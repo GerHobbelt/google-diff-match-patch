@@ -75,6 +75,10 @@ public class diff_match_patch_test extends TestCase {
     assertEquals("diff_commonOverlap: No overlap.", 0, dmp.diff_commonOverlap("123456", "abcd"));
 
     assertEquals("diff_commonOverlap: Overlap.", 3, dmp.diff_commonOverlap("123456xxx", "xxxabcd"));
+
+    // Some overly clever languages (C#) may treat ligatures as equal to their
+    // component letters.  E.g. U+FB01 == 'fi'
+    assertEquals("diff_commonOverlap: Unicode.", 0, dmp.diff_commonOverlap("fi", "\ufb01i"));
   }
 
   public void testDiffHalfmatch() {
@@ -111,20 +115,20 @@ public class diff_match_patch_test extends TestCase {
     tmpVector.add("");
     tmpVector.add("alpha\n");
     tmpVector.add("beta\n");
-    assertLinesToCharsResultEquals("diff_linesToChars:", new LinesToCharsResult("\u0001\u0002\u0001", "\u0002\u0001\u0002", tmpVector), dmp.diff_linesToChars("alpha\nbeta\nalpha\n", "beta\nalpha\nbeta\n"));
+    assertLinesToCharsResultEquals("diff_linesToChars: Shared lines.", new LinesToCharsResult("\u0001\u0002\u0001", "\u0002\u0001\u0002", tmpVector), dmp.diff_linesToChars("alpha\nbeta\nalpha\n", "beta\nalpha\nbeta\n"));
 
     tmpVector.clear();
     tmpVector.add("");
     tmpVector.add("alpha\r\n");
     tmpVector.add("beta\r\n");
     tmpVector.add("\r\n");
-    assertLinesToCharsResultEquals("diff_linesToChars:", new LinesToCharsResult("", "\u0001\u0002\u0003\u0003", tmpVector), dmp.diff_linesToChars("", "alpha\r\nbeta\r\n\r\n\r\n"));
+    assertLinesToCharsResultEquals("diff_linesToChars: Empty string and blank lines.", new LinesToCharsResult("", "\u0001\u0002\u0003\u0003", tmpVector), dmp.diff_linesToChars("", "alpha\r\nbeta\r\n\r\n\r\n"));
 
     tmpVector.clear();
     tmpVector.add("");
     tmpVector.add("a");
     tmpVector.add("b");
-    assertLinesToCharsResultEquals("diff_linesToChars:", new LinesToCharsResult("\u0001", "\u0002", tmpVector), dmp.diff_linesToChars("a", "b"));
+    assertLinesToCharsResultEquals("diff_linesToChars: No linebreaks.", new LinesToCharsResult("\u0001", "\u0002", tmpVector), dmp.diff_linesToChars("a", "b"));
 
     // More than 256 to reveal any 8-bit limitations.
     int n = 300;
@@ -146,18 +150,18 @@ public class diff_match_patch_test extends TestCase {
 
   public void testDiffCharsToLines() {
     // First check that Diff equality works.
-    assertTrue("diff_charsToLines:", new Diff(EQUAL, "a").equals(new Diff(EQUAL, "a")));
+    assertTrue("diff_charsToLines: Equality #1.", new Diff(EQUAL, "a").equals(new Diff(EQUAL, "a")));
 
-    assertEquals("diff_charsToLines:", new Diff(EQUAL, "a"), new Diff(EQUAL, "a"));
+    assertEquals("diff_charsToLines: Equality #2.", new Diff(EQUAL, "a"), new Diff(EQUAL, "a"));
 
-    // Convert chars up to lines
+    // Convert chars up to lines.
     LinkedList<Diff> diffs = diffList(new Diff(EQUAL, "\u0001\u0002\u0001"), new Diff(INSERT, "\u0002\u0001\u0002"));
     ArrayList<String> tmpVector = new ArrayList<String>();
     tmpVector.add("");
     tmpVector.add("alpha\n");
     tmpVector.add("beta\n");
     dmp.diff_charsToLines(diffs, tmpVector);
-    assertEquals("diff_charsToLines:", diffList(new Diff(EQUAL, "alpha\nbeta\nalpha\n"), new Diff(INSERT, "beta\nalpha\nbeta\n")), diffs);
+    assertEquals("diff_charsToLines: Shared lines.", diffList(new Diff(EQUAL, "alpha\nbeta\nalpha\n"), new Diff(INSERT, "beta\nalpha\nbeta\n")), diffs);
 
     // More than 256 to reveal any 8-bit limitations.
     int n = 300;
@@ -259,6 +263,10 @@ public class diff_match_patch_test extends TestCase {
     diffs = diffList(new Diff(EQUAL, "xa"), new Diff(DELETE, "a"), new Diff(EQUAL, "a"));
     dmp.diff_cleanupSemanticLossless(diffs);
     assertEquals("diff_cleanupSemanticLossless: Hitting the end.", diffList(new Diff(EQUAL, "xaa"), new Diff(DELETE, "a")), diffs);
+
+    diffs = diffList(new Diff(EQUAL, "The xxx. The "), new Diff(INSERT, "zzz. The "), new Diff(EQUAL, "yyy."));
+    dmp.diff_cleanupSemanticLossless(diffs);
+    assertEquals("diff_cleanupSemanticLossless: Sentence boundaries.", diffList(new Diff(EQUAL, "The xxx."), new Diff(INSERT, " The zzz."), new Diff(EQUAL, " The yyy.")), diffs);
   }
 
   public void testDiffCleanupSemantic() {
@@ -293,11 +301,19 @@ public class diff_match_patch_test extends TestCase {
 
     diffs = diffList(new Diff(DELETE, "abcxx"), new Diff(INSERT, "xxdef"));
     dmp.diff_cleanupSemantic(diffs);
-    assertEquals("diff_cleanupSemantic: Overlap elimination #1.", diffList(new Diff(DELETE, "abc"), new Diff(EQUAL, "xx"), new Diff(INSERT, "def")), diffs);
+    assertEquals("diff_cleanupSemantic: No overlap elimination.", diffList(new Diff(DELETE, "abcxx"), new Diff(INSERT, "xxdef")), diffs);
 
-    diffs = diffList(new Diff(DELETE, "abcxx"), new Diff(INSERT, "xxdef"), new Diff(DELETE, "ABCXX"), new Diff(INSERT, "XXDEF"));
+    diffs = diffList(new Diff(DELETE, "abcxxx"), new Diff(INSERT, "xxxdef"));
     dmp.diff_cleanupSemantic(diffs);
-    assertEquals("diff_cleanupSemantic: Overlap elimination #2.", diffList(new Diff(DELETE, "abc"), new Diff(EQUAL, "xx"), new Diff(INSERT, "def"), new Diff(DELETE, "ABC"), new Diff(EQUAL, "XX"), new Diff(INSERT, "DEF")), diffs);
+    assertEquals("diff_cleanupSemantic: Overlap elimination.", diffList(new Diff(DELETE, "abc"), new Diff(EQUAL, "xxx"), new Diff(INSERT, "def")), diffs);
+
+    diffs = diffList(new Diff(DELETE, "xxxabc"), new Diff(INSERT, "defxxx"));
+    dmp.diff_cleanupSemantic(diffs);
+    assertEquals("diff_cleanupSemantic: Reverse overlap elimination.", diffList(new Diff(INSERT, "def"), new Diff(EQUAL, "xxx"), new Diff(DELETE, "abc")), diffs);
+
+    diffs = diffList(new Diff(DELETE, "abcd1212"), new Diff(INSERT, "1212efghi"), new Diff(EQUAL, "----"), new Diff(DELETE, "A3"), new Diff(INSERT, "3BC"));
+    dmp.diff_cleanupSemantic(diffs);
+    assertEquals("diff_cleanupSemantic: Two overlap eliminations.", diffList(new Diff(DELETE, "abcd"), new Diff(EQUAL, "1212"), new Diff(INSERT, "efghi"), new Diff(EQUAL, "----"), new Diff(DELETE, "A"), new Diff(EQUAL, "3"), new Diff(INSERT, "BC")), diffs);
   }
 
   public void testDiffCleanupEfficiency() {
@@ -857,13 +873,11 @@ public class diff_match_patch_test extends TestCase {
     assertEquals("patch_apply: Edge partial match.", "x123\ttrue", resultStr);
   }
 
-
   private void assertArrayEquals(String error_msg, Object[] a, Object[] b) {
     List<Object> list_a = Arrays.asList(a);
     List<Object> list_b = Arrays.asList(b);
     assertEquals(error_msg, list_a, list_b);
   }
-
 
   private void assertLinesToCharsResultEquals(String error_msg,
       LinesToCharsResult a, LinesToCharsResult b) {
@@ -885,7 +899,6 @@ public class diff_match_patch_test extends TestCase {
     }
     return text;
   }
-
 
   // Private function for quickly building lists of diffs.
   private static LinkedList<Diff> diffList(Diff... diffs) {
