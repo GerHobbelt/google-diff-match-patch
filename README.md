@@ -1,21 +1,6 @@
 # Diff, Match and Patch
 
-This is a fork of [Diff, Match and Patch Library](http://code.google.com/p/google-diff-match-patch/) by Neil Fraser.
-
-The original library works with strings. This fork works with arrays:
-
-    var dmp = new diff_match_patch()
-    dmp.diff_main(['a', 'b'], ['b'])
-    -> [
-        [DIFF_DELETE, ['a']],
-        [DIFF_EQUAL, ['b']]
-    ]
-
-
-## TODO
-
-* make it work with both arrays and strings
-* diff all objects
+This is a mirror/fork of the [Diff, Match and Patch Library](http://code.google.com/p/google-diff-match-patch/) by Neil Fraser.
 
 
 Diff, Match and Patch Library
