@@ -1,0 +1,30 @@
+{
+  "name": "google-diff-match-patch",
+  "version": "1.1.0",
+  "main": [
+    "javascript/diff_match_patch.js",
+    "javascript/diff_match_patch_uncompressed.js"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "components"
+  ],
+  "description": "This is an unofficial mirror of the JavaScript version of the google-diff-match-patch library. The code included is unmodified.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GerHobbelt/google-diff-match-patch.git"
+  },
+  "author": "Neil Fraser",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/GerHobbelt/google-diff-match-patch/issues"
+  },
+  "homepage": "https://github.com/GerHobbelt/google-diff-match-patch",
+  "keywords": ["diff"],
+  "dependencies": {},
+  "devDependencies": {}
+}
