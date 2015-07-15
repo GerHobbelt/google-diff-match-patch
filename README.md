@@ -1,12 +1,21 @@
-# google-diff-match-patch unofficial mirror
+# Diff, Match and Patch
 
-This is an unofficial mirror of the JavaScript version of the google-diff-match-patch library.
+This is a fork of [Diff, Match and Patch Library](http://code.google.com/p/google-diff-match-patch/) by Neil Fraser.
 
-The software is licenced under the Apache License Version 2.0.
+The original library works with strings. This fork works with arrays:
 
-To install the library please use [bower](https://github.com/bower/bower) or simply clone this repository.
+    var dmp = new diff_match_patch()
+    dmp.diff_main(['a', 'b'], ['b'])
+    -> [
+        [DIFF_DELETE, ['a']],
+        [DIFF_EQUAL, ['b']]
+    ]
 
-    bower install google-diff-match-patch-js
+
+## TODO
+
+* make it work with both arrays and strings
+* diff all objects
 
 
 Diff, Match and Patch Library
@@ -16,6 +25,18 @@ Diff, Match and Patch Library
 **Neil Fraser**
 
 Online demo: http://GerHobbelt.github.io/google-diff-match-patch/
+
+
+## License and installing the software
+
+The software is licenced under the Apache License Version 2.0.
+
+To install the library please use [bower](https://github.com/bower/bower) or simply clone this repository.
+
+    bower install google-diff-match-patch-js
+
+
+## Available languages / ports
 
 This library is currently available in seven different ports, all using the same API.
 Every version includes a full set of unit tests.
