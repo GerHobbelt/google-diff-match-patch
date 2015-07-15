@@ -16,4 +16,4 @@ Currently available in Java, JavaScript, Dart, C++, C#, Objective C, Lua and Pyt
 
 This library implements [Myer's diff algorithm](http://neil.fraser.name/software/diff_match_patch/myers.pdf) which is generally considered to be the best general-purpose diff.  A layer of [pre-diff speedups and post-diff cleanups](http://neil.fraser.name/writing/diff/) surround the diff algorithm, improving both performance and output quality.
 
-This library also implements a [Bitap matching algorithm](http://neil.fraser.name/software/diff_match_patch/bitap.ps) at the heart of a flexible [matching and patching strategy](http://neil.fraser.name/writing/patch/).
+This library also implements a [Bitap matching algorithm](http://neil.fraser.name/software/diff_match_patch/bitap.ps) ([Wikipedia](https://en.wikipedia.org/wiki/Bitap_algorithm)) at the heart of a flexible [matching and patching strategy](http://neil.fraser.name/writing/patch/).
