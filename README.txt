@@ -1,8 +1,21 @@
-Diff, Match and Patch Library
+# google-diff-match-patch unofficial mirror
+
+This is an unofficial mirror of the JavaScript version of the google-diff-match-patch library.
+
+The software is licenced under the Apache License Version 2.0.
+
+To install the library please use [bower](https://github.com/bower/bower) or simply clone this repository.
+
+    bower install google-diff-match-patch-js
+
+
+## Diff, Match and Patch Library
+
 http://code.google.com/p/google-diff-match-patch/
+
 Neil Fraser
 
-Onilne demo: http://resource-il.github.io/google-diff-match-patch/
+Online demo: http://GerHobbelt.github.io/google-diff-match-patch/
 
 This library is currently available in seven different ports, all using the same API.
 Every version includes a full set of unit tests.

@@ -1,9 +1,9 @@
 {
-  "name": "google-diff-match-patch-js",
+  "name": "google-diff-match-patch",
   "version": "1.1.0",
   "main": [
-    "diff_match_patch.js",
-    "diff_match_patch_uncompressed.js"
+    "javascript/diff_match_patch.js",
+    "javascript/diff_match_patch_uncompressed.js"
   ],
   "ignore": [
     "**/.*",
@@ -16,12 +16,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/MajorLeagueBaseball/google-diff-match-patch-js.git"
+    "url": "https://github.com/GerHobbelt/google-diff-match-patch.git"
   },
-  "author": "",
+  "author": "Neil Fraser",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/MajorLeagueBaseball/google-diff-match-patch-js/issues"
+    "url": "https://github.com/GerHobbelt/google-diff-match-patch/issues"
   },
-  "homepage": "https://github.com/MajorLeagueBaseball/google-diff-match-patch-js"
+  "homepage": "https://github.com/GerHobbelt/google-diff-match-patch",
+  "keywords": ["diff"],
+  "dependencies": {},
+  "devDependencies": {}
 }
