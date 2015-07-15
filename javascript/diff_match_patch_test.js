@@ -24,7 +24,7 @@ function assertEquivalent(msg, expected, actual) {
     // msg is optional.
     actual = expected;
     expected = msg;
-    msg = 'Expected: \'' + expected + '\' Actual: \'' + actual + '\'';
+    msg = 'Expected: \'' + JSON.stringify(expected) + '\'\n  Actual: \'' + JSON.stringify(actual) + '\'';
   }
   if (_equivalent(expected, actual)) {
     assertEquals(msg, String.toString(expected), String.toString(actual));
@@ -44,11 +44,17 @@ function _equivalent(a, b) {
       return false;
     }
     for (var p in a) {
+      if (!a.hasOwnProperty(p)) {
+        continue;
+      }
       if (!_equivalent(a[p], b[p])) {
         return false;
       }
     }
     for (var p in b) {
+      if (!b.hasOwnProperty(p)) {
+        continue;
+      }
       if (!_equivalent(a[p], b[p])) {
         return false;
       }
@@ -79,6 +85,25 @@ var dmp = new diff_match_patch();
 
 // DIFF TEST FUNCTIONS
 
+function testDiffMain_Array() {
+  assertEquivalent([[DIFF_EQUAL, ['a']]], dmp.diff_main(['a'], ['a']));
+  assertEquivalent([[DIFF_DELETE, ['a']], [DIFF_INSERT, ['b']]], dmp.diff_main(['a'], ['b']));
+  assertEquivalent([[DIFF_EQUAL, ['a']], [DIFF_DELETE, ['b']]], dmp.diff_main(['a', 'b'], ['a']));
+  assertEquivalent([[DIFF_DELETE, ['a']], [DIFF_EQUAL, ['b']]], dmp.diff_main(['a', 'b'], ['b']));
+  assertEquivalent(
+    [
+      [DIFF_EQUAL, ['a']],
+      [DIFF_DELETE, ['b', 'c']],
+      [DIFF_INSERT, ['f']],
+      [DIFF_EQUAL, ['d']]
+    ],
+    dmp.diff_main(
+      ['a', 'b', 'c', 'd'],
+      ['a', 'f', 'd']
+    )
+  );
+
+}
 
 function testDiffCommonPrefix() {
   // Detect any common prefix.
