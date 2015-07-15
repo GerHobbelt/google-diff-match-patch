@@ -2,6 +2,8 @@ Diff, Match and Patch Library
 http://code.google.com/p/google-diff-match-patch/
 Neil Fraser
 
+Onilne demo: http://resource-il.github.io/google-diff-match-patch/
+
 This library is currently available in seven different ports, all using the same API.
 Every version includes a full set of unit tests.
 
